@@ -6,7 +6,7 @@ import os
 import logging
 import torch
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Literal
 from .config import Config
 from .decorators import time_it
 
@@ -16,12 +16,12 @@ def _load_hf_token_to_env(config: Config):
     if hf_token:
         os.environ["HF_TOKEN"] = hf_token
 
-def _check_device(device: str) -> str:
+def _check_device(device: str) -> Literal["cuda", "cpu"]:
     """Check if the specified device is available, fallback to CPU if not."""
     if device != "cpu" and not torch.cuda.is_available():
         logging.warning(f"Specified device '{device}' is not available. Falling back to 'cpu'.")
         return "cpu"
-    return device
+    return "cuda"
 
 def _verify_model_name_and_cache_dir(config: Config) -> tuple[str, Optional[Path]]:
     """Verify that model name is provided and return model name and cache directory."""
@@ -65,7 +65,7 @@ def load_model_fairchem(config: Config):
     if model_path:
         predictor = pretrained_mlip.load_predict_unit(
             path=model_path,
-            device=_check_device(opt.device.lower()),
+            device=device
         )
         calculator = FAIRChemCalculator(predict_unit=predictor, task_name="omol")
         return calculator
@@ -80,7 +80,7 @@ def load_model_fairchem(config: Config):
     else:
         predictor = pretrained_mlip.get_predict_unit(
             model_name,
-            device=device,
+            device=device
         )
 
     calculator = FAIRChemCalculator(predict_unit=predictor, task_name="omol")
@@ -93,6 +93,7 @@ def load_model_torchsim(config: Config):
     from torch_sim.models.fairchem import FairChemModel  # type: ignore
 
     opt = config.optimization
+    device = _check_device(opt.device.lower())
     force_cpu = _check_device(opt.device.lower()) == "cpu"
 
     model_path = _verify_model_path(config)
@@ -100,10 +101,10 @@ def load_model_torchsim(config: Config):
     _load_hf_token_to_env(config)
 
     if model_path:
-        model = FairChemModel(model=model_path, cpu=force_cpu, task_name="omol")
+        model = FairChemModel(model=model_path, task_name="omol")
         return model
 
-    model = FairChemModel(model=None, model_name=model_name, model_cache_dir=model_cache_dir, cpu=force_cpu, task_name="omol")
+    model = FairChemModel(model=model_name, model_cache_dir=model_cache_dir, task_name="omol")
     return model
 
 

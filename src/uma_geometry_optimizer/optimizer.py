@@ -6,7 +6,7 @@ batches of structures (e.g., conformer ensembles).
 from typing import List, Optional, TYPE_CHECKING
 
 import logging
-import torch_sim
+
 from ase import Atoms
 from ase.optimize import BFGS
 
@@ -20,15 +20,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
 @time_it
 def optimize_single_structure(
     structure: Structure,
     config: Optional[Config] = None,
     calculator: 'FAIRChemCalculator' = None,
 ) -> Structure:
-    """Optimize a single Structure using a pre-trained Fairchem UMA model.
-
+    """
+    Optimize a single Structure using a pre-trained Fairchem UMA model.
     Returns the same Structure with optimized coordinates and energy set.
     """
     if config is None:
@@ -130,8 +129,7 @@ def _optimize_batch_structures(
 ) -> List[Structure]:
     """Optimize structures in batches using Fairchem's batch prediction."""
     import torch
-    import torch_sim as torchsim
-    from torch_sim.optimizers import gradient_descent, fire
+    import torch_sim
     from torch_sim.autobatching import InFlightAutoBatcher
     logger.info("Starting batch optimization of %d structures", len(structures))
 
@@ -141,33 +139,35 @@ def _optimize_batch_structures(
     optimizer_name = getattr(config.optimization, 'batch_optimizer', 'fire') or 'fire'
     optimizer_name = str(optimizer_name).strip().lower()
     if optimizer_name == 'gradient_descent':
-        optimizer = torch_sim.optimizers.Optimizer.gradient_descent
+        optimizer = torch_sim.Optimizer.fire
     else:
-        optimizer = torch_sim.optimizers.Optimizer.fire
+        optimizer = torch_sim.Optimizer.gradient_descent
     convergence_fn = torch_sim.generate_energy_convergence_fn(energy_tol=1e-6)
 
     ase_structures = [
-        Atoms(symbols=s.symbols,
-              positions=[tuple(c) for c in s.coordinates],
-              info={'charge': s.charge, 'spin': s.multiplicity}
+        Atoms(
+            symbols=s.symbols,
+            positions=[tuple(c) for c in s.coordinates],
+            info={'charge': s.charge, 'spin': s.multiplicity}
         ) for s in structures
     ]
-    batched_state = torchsim.io.atoms_to_state(ase_structures, device=device, dtype=torch.float32)
+
+    batched_state = torch_sim.io.atoms_to_state(ase_structures, device=torch.device(device), dtype=torch.float64)
 
     batcher = InFlightAutoBatcher(
         model,
         memory_scales_with="n_atoms",
         max_memory_padding=0.95,
-        max_atoms_to_try=len(structures) * 2,
+        max_atoms_to_try=min(batched_state.n_atoms, 500_000)
     )
 
-    final_state = torch_sim.runners.optimize(
-        system = batched_state,
-        model = model,
-        optimizer = optimizer,
-        convergence_fn = convergence_fn,
-        autobatcher = batcher,
-        steps_between_swaps = 3
+    final_state = torch_sim.optimize(
+        system=batched_state,
+        model=model,
+        optimizer=optimizer,
+        convergence_fn=convergence_fn,
+        autobatcher=batcher,
+        steps_between_swaps=3,
     )
 
     final_atoms = final_state.to_atoms()
