@@ -40,8 +40,9 @@ def _verify_model_name_and_cache_dir(config: Config) -> tuple[str, Path | None]:
             logging.warning(f"Could not create model cache directory at {model_cache_dir}: {e}")
             model_cache_dir = None
 
-    if not model_cache_dir.exists():
-        model_cache_dir = None
+    if model_cache_dir:
+        if not model_cache_dir.exists():
+            model_cache_dir = None
 
     return model_name, model_cache_dir
 
