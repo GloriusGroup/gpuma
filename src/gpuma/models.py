@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-import os
 import logging
-import torch
+import os
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Literal
+
+import torch
+
 from .config import Config
 from .decorators import time_it
+
 
 def _load_hf_token_to_env(config: Config):
     """Load Huggingface token from config to environment variable."""
@@ -23,7 +26,7 @@ def _check_device(device: str) -> Literal["cuda", "cpu"]:
         return "cpu"
     return "cuda"
 
-def _verify_model_name_and_cache_dir(config: Config) -> tuple[str, Optional[Path]]:
+def _verify_model_name_and_cache_dir(config: Config) -> tuple[str, Path | None]:
     """Verify that model name is provided and return model name and cache directory."""
     opt = config.optimization
     model_name = opt.model_name
@@ -33,8 +36,9 @@ def _verify_model_name_and_cache_dir(config: Config) -> tuple[str, Optional[Path
     if model_cache_dir and not model_cache_dir.exists():
         try:
             os.makedirs(model_cache_dir, exist_ok=True)
-        except Exception as e:
-            raise ValueError(f"Could not create model cache directory '{model_cache_dir}': {e}") from e
+        except OSError as e:
+            logging.warning(f"Could not create model cache directory at {model_cache_dir}: {e}")
+            model_cache_dir = None
 
     if not model_cache_dir.exists():
         model_cache_dir = None
@@ -89,12 +93,7 @@ def load_model_fairchem(config: Config):
 @time_it
 def load_model_torchsim(config: Config):
     """Load a torch-sim FairChemModel from name or checkpoint path."""
-    import torch_sim as torchsim  # type: ignore
     from torch_sim.models.fairchem import FairChemModel  # type: ignore
-
-    opt = config.optimization
-    device = _check_device(opt.device.lower())
-    force_cpu = _check_device(opt.device.lower()) == "cpu"
 
     model_path = _verify_model_path(config)
     model_name, model_cache_dir = _verify_model_name_and_cache_dir(config)
@@ -106,5 +105,4 @@ def load_model_torchsim(config: Config):
 
     model = FairChemModel(model=model_name, model_cache_dir=model_cache_dir, task_name="omol")
     return model
-
 

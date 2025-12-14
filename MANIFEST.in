@@ -1,15 +1,11 @@
-# Include essential project files
-include README.md
 include LICENSE
+include README.md
 include pyproject.toml
 
-# Package discovery handled by setuptools (src layout)
+recursive-include examples *.py *.json *.xyz
 
-# Explicitly exclude local external libraries and large folders from sdist
-prune torch-sim
-exclude torch-sim/*
-
-# Exclude build artefacts
-prune **/*.egg-info
-prune src/*.egg-info
-prune src/uma_geometry_optimizer.egg-info
+# Exclude build and cache artifacts
+prune build
+prune dist
+prune .pytest_cache
+prune **/__pycache__

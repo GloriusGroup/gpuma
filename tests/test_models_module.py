@@ -1,7 +1,7 @@
 import pytest
 
-from uma_geometry_optimizer.config import Config
-from uma_geometry_optimizer import models as model_utils
+from gpuma import models as model_utils
+from gpuma.config import Config
 
 
 def test_models_module_exports():
@@ -23,8 +23,7 @@ def test_load_model_torchsim_import_or_skip():
 
     cfg = Config()
     cfg.optimization.device = "cpu"
-    # Do not actually download or require checkpoints; ensure callable without throwing ImportError
-    # Expect that either construction succeeds (if environment has models) or raises a runtime error due to missing model
+
     try:
         model_utils.load_model_torchsim(cfg)
     except Exception:

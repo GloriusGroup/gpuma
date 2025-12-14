@@ -1,6 +1,6 @@
-# UMA Geometry Optimizer
+# GPUMA
 
-A minimalist toolkit for molecular geometry optimization using fairchem UMA models and torch-sim. Includes a simple python API and a CLI.
+A minimalist toolkit for molecular geometry optimization using fairchem UMA models and torch-sim. Includes a simple Python API and a CLI.
 
 ## Known limitations
 
@@ -27,7 +27,7 @@ Note: Some ML/simulation dependencies (torch, rdkit, fairchem) provide OS- and G
 
 ## CLI Usage (Config-Driven)
 
-The CLI is provided via the command `uma-geom-opt`. For best results, create a
+The CLI is provided via the command `gpuma`. For best results, create a
 config file (JSON or YAML) and reference it in all CLI calls.
 
 **Example config file (JSON):**
@@ -75,34 +75,34 @@ optimization:
 
 ```bash
 # Optimize a single structure from SMILES using a config file
-uma-geom-opt optimize --smiles "CCO" --output ethanol_opt.xyz --config examples/config.json
+gpuma optimize --smiles "CCO" --output ethanol_opt.xyz --config examples/config.json
 
 # Optimize a single structure from an XYZ file
-uma-geom-opt optimize --xyz test.xyz --output test_opt.xyz --config examples/config.json
+gpuma optimize --xyz test.xyz --output test_opt.xyz --config examples/config.json
 
 # Create and optimize a conformer ensemble from SMILES
-uma-geom-opt ensemble --smiles "c1ccccc1" --conformers 10 --output benzene_ensemble.xyz --config examples/config.json
+gpuma ensemble --smiles "c1ccccc1" --conformers 10 --output benzene_ensemble.xyz --config examples/config.json
 
 # Batch optimization from a multi-XYZ file
-uma-geom-opt batch --multi-xyz examples/read_multiple_xyz_file/conf0_confsearch_ensemble.xyz \
+gpuma batch --multi-xyz examples/read_multiple_xyz_file/conf0_confsearch_ensemble.xyz \
   --output optimized_ensemble.xyz --config examples/config.json
 
 # Batch optimization from a directory of XYZ files
-uma-geom-opt batch --xyz-dir examples/read_multiple_xyz_dir/ --output optimized_dir.xyz --config examples/config.json
+gpuma batch --xyz-dir examples/read_multiple_xyz_dir/ --output optimized_dir.xyz --config examples/config.json
 
 # Convert SMILES to XYZ (no optimization)
-uma-geom-opt convert --smiles "CCO" --output ethanol.xyz --config examples/config.json
+gpuma convert --smiles "CCO" --output ethanol.xyz --config examples/config.json
 
 # Generate conformers from SMILES (no optimization)
-uma-geom-opt generate --smiles "c1ccccc1" --conformers 5 --output benzene_conformers.xyz --config examples/config.json
+gpuma generate --smiles "c1ccccc1" --conformers 5 --output benzene_conformers.xyz --config examples/config.json
 
 # Create or validate configuration files
-uma-geom-opt config --create examples/config.json
-uma-geom-opt config --validate examples/config.json
+gpuma config --create examples/config.json
+gpuma config --validate examples/config.json
 
 # Verbose vs. quiet (set in config file)
-uma-geom-opt optimize --smiles "CCO" --output ethanol.xyz --config examples/config.json
-uma-geom-opt ensemble --smiles "CCO" --conformers 3 --output ethanol.xyz --config examples/config.json
+gpuma optimize --smiles "CCO" --output ethanol.xyz --config examples/config.json
+gpuma ensemble --smiles "CCO" --conformers 3 --output ethanol.xyz --config examples/config.json
 ```
 
 **Note:**
@@ -112,34 +112,34 @@ uma-geom-opt ensemble --smiles "CCO" --conformers 3 --output ethanol.xyz --confi
 ## Python API (short)
 
 ```python
-import uma_geometry_optimizer as uma
-from uma_geometry_optimizer import Config, Structure
+import gpuma
+from gpuma import Config, Structure
 
 # Convenience (top-level, via the public api module): optimize a single
 # molecule from SMILES and optionally save
-cfg = Config()  # or uma.load_config_from_file("config.json")
-optimized: Structure = uma.optimize_single_smiles(
+cfg = Config()  # or gpuma.load_config_from_file("config.json")
+optimized: Structure = gpuma.optimize_single_smiles(
     "CCO", output_file="ethanol_opt.xyz", config=cfg
 )
 print(optimized.energy)
 
 # Convenience: optimize a single molecule from an XYZ file
-optimized2: Structure = uma.optimize_single_xyz_file(
+optimized2: Structure = gpuma.optimize_single_xyz_file(
     "test.xyz", output_file="test_opt.xyz", config=cfg
 )
 
 # Convenience: optimize a conformer ensemble generated from SMILES
-optimized_confs = uma.optimize_smiles_ensemble(
+optimized_confs = gpuma.optimize_smiles_ensemble(
     "c1ccccc1", num_conformers=5, output_file="benzene_ensemble.xyz", config=cfg
 )
 
 # Lower-level building blocks are available via the package root as well
-s: Structure = uma.smiles_to_xyz("CCO")
-opt_s: Structure = uma.optimize_single_structure(s, cfg)
-uma.save_xyz_file(opt_s, "ethanol_opt.xyz")
+s: Structure = gpuma.smiles_to_xyz("CCO")
+opt_s: Structure = gpuma.optimize_single_structure(s, cfg)
+gpuma.save_xyz_file(opt_s, "ethanol_opt.xyz")
 
 # You can also import directly from the dedicated API module if you prefer
-from uma_geometry_optimizer.api import optimize_single_smiles
+from gpuma.api import optimize_single_smiles
 opt3 = optimize_single_smiles("CCO", config=cfg)
 ```
 

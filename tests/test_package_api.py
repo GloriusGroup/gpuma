@@ -1,4 +1,4 @@
-import uma_geometry_optimizer as pkg
+import gpuma as pkg
 
 
 def test_package_exports_and_metadata():

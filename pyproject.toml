@@ -3,46 +3,60 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "uma-geometry-optimizer"
-version = "0.4.0"
-description = "Simple UMA geometry optimization package with Fairchem UMA and Torch-Sim"
+name = "gpuma"
+version = "1.0.0"
+description = "GPUMA - Geometry optimization toolkit using Fairchem UMA models and Torch-Sim"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
 authors = [
   { name = "Niklas Hölter", email = "niklas.hoelter@uni-muenster.de" },
 ]
-keywords = ["chemistry", "geometry-optimization", "uma", "fairchem", "ase", "mlip"]
+keywords = ["chemistry", "geometry-optimization", "uma", "fairchem", "ase", "mlip", "gpuma"]
 classifiers = [
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "License :: OSI Approved :: MIT License",
   "Intended Audience :: Science/Research",
   "Topic :: Scientific/Engineering :: Chemistry",
-  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Cheminformatics",
 ]
 
 dependencies = [
   "ase>=3.26",
   "torch_sim_atomistic>=0.4.2",
-  "fairchem-core>=2.7",
+  "fairchem-core>=2.7,<2.10",
   "morfeus-ml>=0.7",
   "rdkit>=2022.9.5",
   "tables>=3.10.2",
   "hf_xet",
-  "pytest"
 ]
 
 [project.optional-dependencies]
 yaml = ["pyyaml>=6.0"]
+dev = ["pytest>=9.0.0", "ruff>=0.7.0"]
 
 [project.scripts]
-uma-geom-opt = "uma_geometry_optimizer.cli:main"
+gpuma = "gpuma.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["uma_geometry_optimizer*"]
+include = ["gpuma*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E203"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]
+
+[tool.ruff.format]
+quote-style = "double"
+line-ending = "auto"

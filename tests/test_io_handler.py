@@ -1,5 +1,5 @@
-from uma_geometry_optimizer.io_handler import read_xyz, read_multi_xyz, save_xyz_file, save_multi_xyz
-from uma_geometry_optimizer.structure import Structure
+from gpuma.io_handler import read_multi_xyz, read_xyz, save_multi_xyz, save_xyz_file
+from gpuma.structure import Structure
 
 
 def test_read_and_save_single_xyz_roundtrip(tmp_path):
@@ -51,8 +51,8 @@ He 0 0 1
 
 def test_save_multi_xyz(tmp_path):
     structs = [
-        Structure(["H"], [(0.0,0.0,0.0)], charge=0, multiplicity=1, energy=-1.0),
-        Structure(["He"], [(1.0,0.0,0.0)], charge=0, multiplicity=1, energy=None),
+        Structure(["H"], [(0.0, 0.0, 0.0)], charge=0, multiplicity=1, energy=-1.0),
+        Structure(["He"], [(1.0, 0.0, 0.0)], charge=0, multiplicity=1, energy=None),
     ]
     out = tmp_path / "multi.xyz"
     save_multi_xyz(structs, str(out), comments=["A", "B"])

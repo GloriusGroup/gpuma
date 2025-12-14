@@ -1,8 +1,13 @@
 import numpy as np
 import pytest
 
-from uma_geometry_optimizer.mol_utils import _to_symbol_list, _to_coord_list, smiles_to_conformer_ensemble, smiles_to_structure
-from uma_geometry_optimizer.structure import Structure
+from gpuma.mol_utils import (
+    _to_coord_list,
+    _to_symbol_list,
+    smiles_to_conformer_ensemble,
+    smiles_to_structure,
+)
+from gpuma.structure import Structure
 
 
 def test_to_symbol_list_with_strings_and_atomic_numbers():
@@ -41,4 +46,3 @@ def test_smiles_to_structure_if_available():
     pytest.importorskip("morfeus.conformer")
     s = smiles_to_structure("O")
     assert isinstance(s, Structure)
-

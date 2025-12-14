@@ -1,20 +1,23 @@
-import torch
 import logging
 
-from uma_geometry_optimizer.config import (
+import torch
+
+from gpuma.config import (
+    DEFAULT_CONFIG,
     Config,
+    default_device,
+    get_huggingface_token,
     load_config_from_file,
     save_config_to_file,
-    get_huggingface_token,
-    DEFAULT_CONFIG,
-    default_device,
 )
 
 
 def test_config_defaults_and_attribute_access():
     cfg = Config()
     # default merge
-    assert cfg.to_dict()["optimization"]["model_name"] == DEFAULT_CONFIG["optimization"]["model_name"]
+    assert (
+        cfg.to_dict()["optimization"]["model_name"] == DEFAULT_CONFIG["optimization"]["model_name"]
+    )
     # attribute access and set
     assert isinstance(cfg.optimization.to_dict(), dict)
     cfg.optimization.device = "cpu"

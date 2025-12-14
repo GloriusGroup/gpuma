@@ -7,24 +7,22 @@ package's ``__init__`` to keep the top-level namespace lightweight.
 
 from __future__ import annotations
 
-from typing import List, Optional
-
-from .structure import Structure
+from .config import Config
 from .io_handler import (
     read_xyz,
-    smiles_to_xyz,
-    smiles_to_ensemble,
-    save_xyz_file,
     save_multi_xyz,
+    save_xyz_file,
+    smiles_to_ensemble,
+    smiles_to_xyz,
 )
 from .optimizer import optimize_single_structure, optimize_structure_batch
-from .config import Config
+from .structure import Structure
 
 
 def optimize_single_smiles(
     smiles: str,
-    output_file: Optional[str] = None,
-    config: Optional[Config] = None,
+    output_file: str | None = None,
+    config: Config | None = None,
 ) -> Structure:
     """Optimize a single molecule from a SMILES string.
 
@@ -58,8 +56,8 @@ def optimize_single_smiles(
 
 def optimize_single_xyz_file(
     input_file: str,
-    output_file: Optional[str] = None,
-    config: Optional[Config] = None,
+    output_file: str | None = None,
+    config: Config | None = None,
     charge: int = 0,
     multiplicity: int = 1,
 ) -> Structure:
@@ -100,9 +98,9 @@ def optimize_single_xyz_file(
 def optimize_smiles_ensemble(
     smiles: str,
     num_conformers: int = 10,
-    output_file: Optional[str] = None,
-    config: Optional[Config] = None,
-) -> List[Structure]:
+    output_file: str | None = None,
+    config: Config | None = None,
+) -> list[Structure]:
     """Optimize a conformer ensemble generated from a SMILES string.
 
     Parameters

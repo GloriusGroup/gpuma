@@ -1,5 +1,6 @@
 import logging
-from uma_geometry_optimizer.decorators import time_it
+
+from gpuma.decorators import time_it
 
 
 def test_time_it_decorator_logs_time(caplog):
