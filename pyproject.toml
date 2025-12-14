@@ -16,7 +16,7 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Intended Audience :: Science/Research",
   "Topic :: Scientific/Engineering :: Chemistry",
-  "Topic :: Scientific/Engineering :: Cheminformatics",
+  "Topic :: Scientific/Engineering :: Physics",
 ]
 
 dependencies = [
@@ -31,7 +31,7 @@ dependencies = [
 
 [project.optional-dependencies]
 yaml = ["pyyaml>=6.0"]
-dev = ["pytest>=9.0.0", "ruff>=0.7.0", "build>=1.2.1"]
+dev = ["pytest>=9.0.0", "ruff>=0.7.0", "build>=1.2.1", "twine>=5.0.0"]
 
 [project.scripts]
 gpuma = "gpuma.cli:main"
