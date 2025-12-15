@@ -22,7 +22,6 @@ def _load_hf_token_to_env(config: Config) -> None:
 
 def _parse_device_string(device: str) -> str:
     """Normalize a device string.
-
     Accepts "cpu", "cuda" or "cuda:N" (N integer), case-insensitive.
     Falls back to "cpu" if CUDA is not available.
     """
@@ -44,10 +43,12 @@ def _parse_device_string(device: str) -> str:
     return "cpu"
 
 
-def _check_device(device: str) -> Literal["cuda", "cpu"]:
-    """Backwards-compatible check returning only "cuda" or "cpu".
+def _backend_device_for_fairchem(device: str) -> Literal["cuda", "cpu"]:
+    """Return a backend device string for Fairchem ("cuda" or "cpu" only).
 
-    This is used by Fairchem, which only distinguishes between CPU and CUDA.
+    Any "cuda" or "cuda:N" request becomes "cuda" (if CUDA is available),
+    everything else maps to "cpu". This keeps Fairchem's expectations intact
+    while still letting torch-sim use fully qualified CUDA devices.
     """
     normalized = _parse_device_string(device)
     return "cuda" if normalized.startswith("cuda") else "cpu"
@@ -109,13 +110,14 @@ def load_model_fairchem(config: Config):
 
     opt = config.optimization
     _load_hf_token_to_env(config)
-    device = _check_device(str(opt.device).lower())
+    # Fairchem only receives a backend device of "cuda" or "cpu"
+    backend_device = _backend_device_for_fairchem(str(opt.device))
     model_path = _verify_model_path(config)
 
     if model_path:
         predictor = pretrained_mlip.load_predict_unit(
             path=model_path,
-            device=device
+            device=backend_device,
         )
         calculator = FAIRChemCalculator(predict_unit=predictor, task_name="omol")
         return calculator
@@ -124,13 +126,13 @@ def load_model_fairchem(config: Config):
     if model_dir:
         predictor = pretrained_mlip.get_predict_unit(
             model_name,
-            device=device,
+            device=backend_device,
             cache_dir=str(model_dir),
         )
     else:
         predictor = pretrained_mlip.get_predict_unit(
             model_name,
-            device=device
+            device=backend_device,
         )
 
     calculator = FAIRChemCalculator(predict_unit=predictor, task_name="omol")
@@ -143,7 +145,7 @@ def load_model_torchsim(config: Config):
 
     model_path = _verify_model_path(config)
     model_name, model_cache_dir = _verify_model_name_and_cache_dir(config)
-    torch_device = _device_for_torch(str(config.optimization.device).lower())
+    torch_device = _device_for_torch(str(config.optimization.device))
     _load_hf_token_to_env(config)
 
     if model_path:

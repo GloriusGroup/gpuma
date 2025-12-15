@@ -13,7 +13,12 @@ from fairchem.core import FAIRChemCalculator
 
 from .config import Config, load_config_from_file
 from .decorators import time_it
-from .models import _check_device, load_model_fairchem, load_model_torchsim
+from .models import (
+    _device_for_torch,
+    _parse_device_string,
+    load_model_fairchem,
+    load_model_torchsim,
+)
 from .structure import Structure
 
 logger = logging.getLogger(__name__)
@@ -94,8 +99,7 @@ def optimize_structure_batch(
         if struct.n_atoms == 0:
             raise ValueError(f"Structure {i}: empty structure")
 
-    device = _check_device(config.optimization.device)
-    force_cpu = device == "cpu"
+    force_cpu = _parse_device_string(config.optimization.device) == "cpu"
 
     logger.info("Optimization device: %s", "CPU" if force_cpu else "GPU")
     mode = str(config.optimization.batch_optimization_mode).lower()
@@ -152,7 +156,7 @@ def _optimize_batch_structures(
 
     logger.info("Starting batch optimization of %d structures", len(structures))
 
-    device = _check_device(config.optimization.device)
+    device = _device_for_torch(config.optimization.device)
     model = load_model_torchsim(config)
 
     optimizer_name = getattr(config.optimization, "batch_optimizer", "fire") or "fire"

@@ -18,9 +18,12 @@ def test_load_model_fairchem_empty_name_raises():
 def test_device_parsing_for_fairchem_and_torchsim(monkeypatch):
     cfg = Config()
     cfg.optimization.model_name = "dummy"
-    cfg.optimization.device = "cuda:0"
+    # request a specific GPU
+    cfg.optimization.device = "cuda:2"
 
     # Monkeypatch fairchem and torch_sim imports so we don't require them
+    seen = {"fairchem_device": None, "torch_device": None}
+
     class DummyCalc:
         def __init__(self, predict_unit, task_name):  # noqa: D401
             self.predict_unit = predict_unit
@@ -38,23 +41,41 @@ def test_device_parsing_for_fairchem_and_torchsim(monkeypatch):
 
     class DummyPretrained:
         def get_predict_unit(self, model_name, device, cache_dir=None):  # noqa: D401
+            # record which device string Fairchem sees
+            seen["fairchem_device"] = device
             return DummyPredictor()
+
+        def load_predict_unit(self, path, device):  # noqa: D401
+            seen["fairchem_device"] = device
+            return DummyPredictor()
+
+    def fake_fairchem_model(model, task_name, model_cache_dir=None, device=None):  # noqa: D401
+        # record which torch.device torch-sim sees
+        seen["torch_device"] = device
+        return DummyFairChemModel(model, task_name, model_cache_dir=model_cache_dir, device=device)
 
     monkeypatch.setattr("fairchem.core.FAIRChemCalculator", DummyCalc)
     monkeypatch.setattr("fairchem.core.pretrained_mlip", DummyPretrained())
-    monkeypatch.setattr("torch_sim.models.fairchem.FairChemModel", DummyFairChemModel)
+    monkeypatch.setattr("torch_sim.models.fairchem.FairChemModel", fake_fairchem_model)
 
-    # Fairchem should see only "cuda" or "cpu"
+    # Fairchem should see only "cuda" or "cpu" (no index)
     calc = model_utils.load_model_fairchem(cfg)
     assert isinstance(calc, DummyCalc)
     assert isinstance(calc.predict_unit, DummyPredictor)
+    assert seen["fairchem_device"] in {"cuda", "cpu"}
 
-    # Torch-sim should receive a torch.device
+    # Torch-sim should receive a torch.device reflecting the full string, incl. index
     model = model_utils.load_model_torchsim(cfg)
     assert isinstance(model, DummyFairChemModel)
-    from torch import device as torch_device
 
-    assert isinstance(model.device, torch_device)
+    import torch
+    from torch import device as torch_device
+    assert isinstance(seen["torch_device"], torch_device)
+    # When CUDA is available, we expect a cuda:2 device; otherwise it will fall back to CPU
+    if torch.cuda.is_available():  # type: ignore[attr-defined]
+        assert str(seen["torch_device"]).startswith("cuda")
+    else:
+        assert str(seen["torch_device"]) == "cpu"
 
 
 def test_load_model_torchsim_import_or_skip():
