@@ -26,7 +26,7 @@ def example_ensemble_from_smiles():
     num_conformers = 100
     print(f"Generating {num_conformers} conformers for {smiles} and optimizing...")
 
-    output_file = os.path.join(OUTPUT_DIR, "ensemble_from_smiles_optimized.xyz")
+    output_file = os.path.join(OUTPUT_DIR, "python_ensemble_from_smiles_optimized.xyz")
 
     results = gpuma.optimize_smiles_ensemble(
         smiles=smiles,
@@ -46,7 +46,7 @@ def example_batch_from_multi_xyz():
     print("\n=== Example 2: Batch optimization from multi-XYZ file ===")
 
     input_file = "example_input_xyzs/multi_xyz_file.xyz"
-    output_file = os.path.join(OUTPUT_DIR, "batch_from_multi_xyz_optimized.xyz")
+    output_file = os.path.join(OUTPUT_DIR, "python_batch_from_multi_xyz_optimized.xyz")
 
     if not os.path.exists(input_file):
         print(f"✗ Input file {input_file} not found")
@@ -73,7 +73,7 @@ def example_batch_from_xyz_directory():
     print("\n=== Example 3: Batch optimization from XYZ directory ===")
 
     input_dir = "example_input_xyzs/multi_xyz_dir"
-    output_file = os.path.join(OUTPUT_DIR, "batch_from_directory_optimized.xyz")
+    output_file = os.path.join(OUTPUT_DIR, "python_batch_from_directory_optimized.xyz")
 
     if not os.path.exists(input_dir):
         print(f"✗ Input directory {input_dir} not found")
@@ -113,7 +113,7 @@ def example_ensemble_with_config():
     conformers = gpuma.smiles_to_ensemble(smiles, config.optimization.max_num_conformers)
     results = gpuma.optimize_structure_batch(conformers, config)
 
-    output_file = os.path.join(OUTPUT_DIR, "ensemble_custom_config_optimized.xyz")
+    output_file = os.path.join(OUTPUT_DIR, "python_ensemble_custom_config_optimized.xyz")
 
     gpuma.save_multi_xyz(
         results,

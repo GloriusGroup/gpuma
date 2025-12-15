@@ -28,7 +28,7 @@ def example_optimize_from_smiles():
     cfg = load_config_from_file("config.json")
     cfg.optimization.multiplicity = 1
 
-    output_file = os.path.join(OUTPUT_DIR, "single_from_smiles.xyz")
+    output_file = os.path.join(OUTPUT_DIR, "python_single_smiles_basic.xyz")
 
     struct: Structure = gpuma.optimize_single_smiles(
         smiles=smiles,
@@ -46,7 +46,7 @@ def example_optimize_from_smiles():
     struct2.comment = f"Optimized from SMILES: {smiles}"
     struct2 = gpuma.optimize_single_structure(struct2)
 
-    step_output = os.path.join(OUTPUT_DIR, "single_from_smiles_stepwise.xyz")
+    step_output = os.path.join(OUTPUT_DIR, "python_single_smiles_stepwise.xyz")
     gpuma.save_xyz_file(struct2, step_output)
 
     print("✓ Step-by-step optimization successful!")
@@ -59,7 +59,7 @@ def example_optimize_from_xyz():
     print("\n=== Example 2: Single optimization from XYZ file ===")
 
     input_file = "example_input_xyzs/multi_xyz_dir/input_1.xyz"
-    output_file = os.path.join(OUTPUT_DIR, "single_from_xyz.xyz")
+    output_file = os.path.join(OUTPUT_DIR, "python_single_xyz_basic.xyz")
 
     if not os.path.exists(input_file):
         print(f"✗ Input file {input_file} not found")
@@ -91,7 +91,7 @@ def example_optimize_with_custom_config():
     smiles = "C1=C[O+]=CC=C1"
     print(f"Optimizing {smiles} with custom config...")
 
-    output_file = os.path.join(OUTPUT_DIR, "single_from_smiles_custom_config.xyz")
+    output_file = os.path.join(OUTPUT_DIR, "python_single_smiles_custom_config.xyz")
 
     struct: Structure = gpuma.optimize_single_smiles(
         smiles=smiles,

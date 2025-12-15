@@ -357,8 +357,13 @@ def cmd_optimize(args, config: Config) -> None:
     try:
         if args.smiles:
             # charge is derived from SMILES; multiplicity can be overridden via config or CLI
-            eff_mult = int(args.multiplicity if hasattr(args, "multiplicity")
-                           else getattr(config.optimization, "multiplicity", 1))
+            eff_mult = int(
+                args.multiplicity
+                if hasattr(args, "multiplicity") and args.multiplicity is not None
+                else getattr(config.optimization, "multiplicity", 1)
+            )
+            # write back to config so optimize_single_smiles/smiles_to_xyz see it
+            config.optimization.multiplicity = eff_mult
             logger.info(
                 "Converting SMILES '%s' to 3D coordinates and optimizing (multiplicity=%d)...",
                 args.smiles,
@@ -369,7 +374,6 @@ def cmd_optimize(args, config: Config) -> None:
                 output_file=args.output,
                 config=config,
             )
-            optimized.multiplicity = eff_mult
         else:
             eff_charge = int(
                 args.charge

@@ -53,33 +53,33 @@ and avoid runtime overhead for model initialization and memory estimation.
 
 ```bash
 # Optimize a single structure from SMILES using a config file
-gpuma optimize --smiles "C=C" --output examples/example_output/ethylene_opt.xyz --config examples/config.json
+gpuma optimize --smiles "C=C" --output examples/example_output/cli_smiles_ethylene_opt.xyz --config examples/config.json
 
 # Optimize a triplet state from SMILES (multiplicity = 3)
 # Charge is inferred from the SMILES; multiplicity is set via CLI
-gpuma optimize --smiles "C=C" --multiplicity 3 --output examples/example_output/ethylene_triplet_opt.xyz --config examples/config.json
+gpuma optimize --smiles "C=C" --multiplicity 3 --output examples/example_output/cli_smiles_ethylene_triplet_opt.xyz --config examples/config.json
 
 # Optimize a single structure from an XYZ file
-gpuma optimize --xyz examples/example_input_xyzs/single_xyz_file.xyz --output examples/example_output/single_from_xyz_cli.xyz --config examples/config.json
+gpuma optimize --xyz examples/example_input_xyzs/single_xyz_file.xyz --output examples/example_output/cli_single_xyz_optimization.xyz --config examples/config.json
 
 # Create and optimize a conformer ensemble from SMILES
-gpuma ensemble --smiles "c1c(CCOCC)cccc1" --conformers 10 --output examples/example_output/benzene_ensemble.xyz --config examples/config.json
+gpuma ensemble --smiles "c1c(CCOCC)cccc1" --conformers 10 --output examples/example_output/cli_ensemble_optimization.xyz --config examples/config.json
 
 # Batch optimization from a multi-XYZ file
 gpuma batch --multi-xyz examples/example_input_xyzs/multi_xyz_file.xyz \
-  --output examples/example_output/optimized_ensemble.xyz --config examples/config.json
+  --output examples/example_output/cli_multi_xyz_file_optimization.xyz --config examples/config.json
 
 # Batch optimization from a directory of XYZ files
-gpuma batch --xyz-dir examples/multi_xyz_dir/ --output examples/example_output/optimized_dir.xyz --config examples/config.json
+gpuma batch --xyz-dir examples/example_input_xyzs/multi_xyz_dir/ --output examples/example_output/cli_multi_xyz_dir_optimization.xyz  --config examples/config.json
 
 # Batch optimization from a directory of XYZ files with modified charge/spin
-gpuma batch --xyz-dir examples/multi_xyz_dir/ --output examples/example_output/optimized_dir_ch1_mult2.xyz --charge 1 --multiplicity 2 --config examples/config.json
+gpuma batch --xyz-dir examples/example_input_xyzs/multi_xyz_dir/ --output examples/example_output/cli_multi_xyz_dir_optimization_modified_charge_spin.xyz --charge 1 --multiplicity 2 --config examples/config.json
 
 # Convert SMILES to XYZ (no optimization)
-gpuma convert --smiles "CCO" --output examples/example_output/ethanol.xyz --config examples/config.json
+gpuma convert --smiles "CCO" --output examples/example_output/cli_no_optimization.xyz --config examples/config.json
 
 # Generate conformers from SMILES (no optimization)
-gpuma generate --smiles "c1ccccc1" --conformers 5 --output examples/example_output/benzene_conformers.xyz --config examples/config.json
+gpuma generate --smiles "c1ccccc1" --conformers 5 --output examples/example_output/cli_conformer_generation.xyz --config examples/config.json
 
 # Create or validate configuration files
 gpuma config --create examples/config.json
