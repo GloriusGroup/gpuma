@@ -7,6 +7,8 @@ with RDKit.
 
 from numbers import Integral
 
+from ase.data import chemical_symbols
+
 from .decorators import time_it
 from .structure import Structure
 
@@ -18,8 +20,6 @@ def _to_symbol_list(elements) -> list[str]:
     (:class:`int` or other :class:`numbers.Integral` types) and converts them
     to a list of string symbols. Numpy arrays are supported transparently.
     """
-    from ase.data import chemical_symbols
-
     try:
         if hasattr(elements, "tolist"):
             elements = elements.tolist()
