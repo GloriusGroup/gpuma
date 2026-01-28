@@ -3,6 +3,7 @@
 This module provides functions for reading molecular structures from various
 formats and converting between different representations.
 """
+
 from __future__ import annotations
 
 import glob
@@ -228,18 +229,20 @@ def read_xyz_directory(
     if not os.path.exists(directory_path):
         raise FileNotFoundError(f"Directory {directory_path} not found")
 
-    xyz_files = glob.glob(os.path.join(directory_path, "*.xyz"))
-
-    if not xyz_files:
-        raise ValueError(f"No XYZ files found in directory {directory_path}")
+    xyz_files = glob.iglob(os.path.join(directory_path, "*.xyz"))
 
     structures: list[Structure] = []
+    found_any = False
 
     for xyz_file in xyz_files:
+        found_any = True
         try:
             structures.append(read_xyz(xyz_file, charge=charge, multiplicity=multiplicity))
         except Exception as exc:  # pragma: no cover - logged and skipped
             logger.warning("Failed to read %s: %s", xyz_file, exc)
+
+    if not found_any:
+        raise ValueError(f"No XYZ files found in directory {directory_path}")
 
     if not structures:
         raise ValueError("No valid structures could be read from any XYZ files")
@@ -247,9 +250,9 @@ def read_xyz_directory(
     return structures
 
 
-def smiles_to_xyz(smiles_string: str,
-                  return_full_xyz_str: bool = False,
-                  multiplicity: int | None = None) -> Structure | str:
+def smiles_to_xyz(
+    smiles_string: str, return_full_xyz_str: bool = False, multiplicity: int | None = None
+) -> Structure | str:
     """Convert a SMILES string to a :class:`Structure` or an XYZ string.
 
     Parameters
@@ -286,9 +289,11 @@ def smiles_to_xyz(smiles_string: str,
             xyz_lines.append(f"{atom} {coord[0]:.6f} {coord[1]:.6f} {coord[2]:.6f}")
         return "\n".join(xyz_lines)
 
-    struct.comment = (f"Generated from SMILES: {smiles_string} | "
-                      f"Charge: {struct.charge} | "
-                      f"Multiplicity: {struct.multiplicity}")
+    struct.comment = (
+        f"Generated from SMILES: {smiles_string} | "
+        f"Charge: {struct.charge} | "
+        f"Multiplicity: {struct.multiplicity}"
+    )
     return struct
 
 
@@ -339,9 +344,9 @@ def save_xyz_file(structure: Structure, file_path: str) -> None:
         fh.write("\n".join(lines))
 
 
-def save_multi_xyz(structures: list[Structure],
-                   file_path: str,
-                   comments: list[str] | None = None) -> None:
+def save_multi_xyz(
+    structures: list[Structure], file_path: str, comments: list[str] | None = None
+) -> None:
     """Save multiple structures to a multi-XYZ file, including energy and state."""
     lines: list[str] = []
     for idx, struct in enumerate(structures):
