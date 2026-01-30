@@ -1,13 +1,11 @@
-import sys
 from unittest.mock import MagicMock, patch
-import pytest
 
 from gpuma.config import Config
 from gpuma.optimizer import _get_cached_calculator
 
+
 def test_bounded_cache_behavior():
     """Verify that the cache is bounded and evicts old entries."""
-
     # Access the cached function implementation
     from gpuma.optimizer import _load_calculator_impl
 
@@ -48,6 +46,7 @@ def test_bounded_cache_behavior():
         assert info.currsize == 1
         assert info.misses == 3
         assert info.hits == 1
+
 
 if __name__ == "__main__":
     test_bounded_cache_behavior()
