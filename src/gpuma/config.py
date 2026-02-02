@@ -64,16 +64,27 @@ class _Section:
     """Lightweight wrapper to provide attribute access to a nested dict section."""
 
     def __init__(self, root: dict[str, Any], path: list[str]):
+        """Initialize the section wrapper.
+
+        Parameters
+        ----------
+        root:
+            The root dictionary of the configuration.
+        path:
+            List of keys to traverse to reach this section.
+        """
         object.__setattr__(self, "_root", root)
         object.__setattr__(self, "_path", path)
 
     def _node(self) -> dict[str, Any]:
+        """Resolve the path to the current node in the dictionary."""
         node = self._root
         for key in self._path:
             node = node.setdefault(key, {})
         return node
 
     def __getattr__(self, name: str):
+        """Get a value or a subsection by attribute name."""
         node = self._node()
         if name in node:
             val = node[name]
@@ -85,16 +96,20 @@ class _Section:
         )
 
     def __setattr__(self, name: str, value: Any) -> None:
+        """Set a value in the configuration by attribute name."""
         node = self._node()
         node[name] = value
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a deep copy of the section as a dictionary."""
         return copy.deepcopy(self._node())
 
     def get(self, key: str, default: Any = None) -> Any:
+        """Get a value by key, similar to dict.get."""
         return self._node().get(key, default)
 
     def setdefault(self, key: str, default: Any = None) -> Any:
+        """Set a default value for a key, similar to dict.setdefault."""
         return self._node().setdefault(key, default)
 
     def get_huggingface_token(self) -> str | None:
@@ -131,6 +146,13 @@ class Config:
     """
 
     def __init__(self, data: dict[str, Any] | None = None) -> None:
+        """Initialize configuration with optional overrides.
+
+        Parameters
+        ----------
+        data:
+            Optional dictionary of configuration overrides.
+        """
         merged = _deep_merge(DEFAULT_CONFIG, data or {})
         self._data: dict[str, Any] = merged
         # basic validation to catch obvious mistakes early

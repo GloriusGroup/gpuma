@@ -28,13 +28,30 @@ mock_module("torch_sim.models.fairchem")
 
 ase = mock_module("ase")
 ase_data = mock_module("ase.data")
-mock_module("ase.optimize")
-mock_module("fairchem")
-mock_module("fairchem.core")
+ase_opt = mock_module("ase.optimize")
+
+if isinstance(ase, MagicMock):
+    ase.data = ase_data
+    ase.optimize = ase_opt
+
+fairchem = mock_module("fairchem")
+fairchem_core = mock_module("fairchem.core")
+
+if isinstance(fairchem, MagicMock):
+    fairchem.core = fairchem_core
+
 morfeus = mock_module("morfeus")
 morfeus_conformer = mock_module("morfeus.conformer")
+
+if isinstance(morfeus, MagicMock):
+    morfeus.conformer = morfeus_conformer
+
 rdkit = mock_module("rdkit")
 rdkit_chem = mock_module("rdkit.Chem")
+
+if isinstance(rdkit, MagicMock):
+    rdkit.Chem = rdkit_chem
+
 mock_module("tables")
 mock_module("hf_xet")
 
