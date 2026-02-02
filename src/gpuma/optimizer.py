@@ -247,6 +247,7 @@ def _optimize_batch_structures(
         optimizer = torch_sim.Optimizer.fire
     else:
         optimizer = torch_sim.Optimizer.gradient_descent
+
     convergence_fn = torch_sim.generate_energy_convergence_fn(energy_tol=1e-6)
     convergence_fn = torch_sim.generate_force_convergence_fn(force_tol=1e-2)
 
