@@ -86,14 +86,24 @@ if isinstance(morfeus_conformer, MagicMock):
             smiles = getattr(mol, "_smiles", "")
 
             if smiles == "O":
-                 # O -> H-O-H approx
-                 e.append(MockConformer(elements=[8, 1, 1], coordinates=[[0.0, 0.0, 0.0], [0.96, 0.0, 0.0], [-0.2, 0.9, 0.0]]))
+                # O -> H-O-H approx
+                e.append(
+                    MockConformer(
+                        elements=[8, 1, 1],
+                        coordinates=[[0.0, 0.0, 0.0], [0.96, 0.0, 0.0], [-0.2, 0.9, 0.0]],
+                    )
+                )
             elif smiles == "[NH4+]":
-                 # NH4+ -> N + 4H
-                 e.append(MockConformer(elements=[7, 1, 1, 1, 1], coordinates=[[0,0,0], [1,0,0], [-1,0,0], [0,1,0], [0,-1,0]]))
+                # NH4+ -> N + 4H
+                e.append(
+                    MockConformer(
+                        elements=[7, 1, 1, 1, 1],
+                        coordinates=[[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]],
+                    )
+                )
             else:
-                 # Default dummy
-                 e.append(MockConformer(elements=[6], coordinates=[[0.0, 0.0, 0.0]]))
+                # Default dummy
+                e.append(MockConformer(elements=[6], coordinates=[[0.0, 0.0, 0.0]]))
 
             return e
 
@@ -106,18 +116,21 @@ if isinstance(morfeus_conformer, MagicMock):
     morfeus_conformer.ConformerEnsemble = MockEnsemble
 
 if isinstance(rdkit_chem, MagicMock):
+
     def mock_mol_from_smiles(smiles):
         if not smiles:
-             return None
+            return None
         m = MagicMock()
         m._smiles = smiles
         return m
+
     rdkit_chem.MolFromSmiles.side_effect = mock_mol_from_smiles
 
     def mock_get_formal_charge(mol):
         if getattr(mol, "_smiles", "") == "[NH4+]":
             return 1
         return 0
+
     rdkit_chem.GetFormalCharge.side_effect = mock_get_formal_charge
 
     rdkit_chem.AddHs.side_effect = lambda m: m

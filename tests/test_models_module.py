@@ -1,13 +1,13 @@
-import pytest
-import sys
 import os
 from unittest.mock import MagicMock, patch
-from pathlib import Path
+
+import pytest
 
 from gpuma import models as model_utils
 from gpuma.config import Config
 
 # Note: Tests rely on mocked fairchem/torch_sim from conftest.py or internal patches
+
 
 def test_models_module_exports():
     assert hasattr(model_utils, "load_model_fairchem")
@@ -32,7 +32,7 @@ def test_load_model_fairchem_uses_cache_dir(tmp_path):
     with patch("fairchem.core.pretrained_mlip.get_predict_unit") as mock_get:
         mock_get.return_value = MagicMock()
         with patch("fairchem.core.FAIRChemCalculator") as MockCalc:
-            calc = model_utils.load_model_fairchem(cfg)
+            model_utils.load_model_fairchem(cfg)
 
             mock_get.assert_called_once()
             args, kwargs = mock_get.call_args
@@ -72,8 +72,9 @@ def test_load_model_torchsim_from_path(tmp_path):
     cfg.optimization.device = "cpu"
 
     # We need to mock torch_sim.models.fairchem.FairChemModel
-    # Since torch_sim is mocked in conftest, we patch the mock in sys.modules or use patch string
-    # "torch_sim.models.fairchem.FairChemModel" should work if sys.modules has torch_sim.models.fairchem
+    # Since torch_sim is mocked in conftest, we patch the mock in sys.modules
+    # or use patch string "torch_sim.models.fairchem.FairChemModel" should work
+    # if sys.modules has torch_sim.models.fairchem
 
     with patch("torch_sim.models.fairchem.FairChemModel") as MockModel:
         model_utils.load_model_torchsim(cfg)
@@ -91,16 +92,17 @@ def test_hf_token_is_set_in_env(monkeypatch):
     # Ensure env var is clear initially
     monkeypatch.delenv("HF_TOKEN", raising=False)
 
-    with patch("fairchem.core.pretrained_mlip.get_predict_unit"), \
-         patch("fairchem.core.FAIRChemCalculator"):
+    with patch("fairchem.core.pretrained_mlip.get_predict_unit"), patch(
+        "fairchem.core.FAIRChemCalculator"
+    ):
         model_utils.load_model_fairchem(cfg)
 
     assert os.environ.get("HF_TOKEN") == "my_token"
 
 
 def test_device_fallback_logic():
-    # Test that cuda fallback to cpu if not available happens inside _parse_device_string
-    # We can mock torch.cuda.is_available
+    # Test that cuda fallback to cpu if not available happens inside
+    # _parse_device_string. We can mock torch.cuda.is_available
 
     with patch("torch.cuda.is_available", return_value=False):
         dev = model_utils._parse_device_string("cuda:0")
