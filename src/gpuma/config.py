@@ -9,6 +9,7 @@ preserved, and only a small set of known keys have defaults derived from
 from __future__ import annotations
 
 import copy
+import functools
 import json
 import logging
 import os
@@ -151,8 +152,35 @@ class Config:
         return cls(data)
 
 
+@functools.lru_cache(maxsize=1)
+def _read_config_file(filepath: str) -> dict[str, Any]:
+    """Read and parse configuration file with caching.
+
+    Returns an empty dict if the file does not exist.
+    """
+    if not os.path.exists(filepath):
+        return {}
+
+    with open(filepath, encoding="utf-8") as f:
+        if filepath.endswith(".json"):
+            return json.load(f)
+        elif filepath.endswith(".yaml") or filepath.endswith(".yml"):
+            try:
+                from yaml import safe_load as _yaml_safe_load  # type: ignore
+
+                return _yaml_safe_load(f)
+            except ImportError as e:
+                raise ImportError("PyYAML is required to load YAML config files") from e
+        else:
+            raise ValueError("Config file must be JSON or YAML format")
+
+
 def load_config_from_file(filepath: str = "config.json") -> Config:
     """Load configuration from a JSON/YAML file and deep-merge with defaults.
+
+    This function caches the raw dictionary loaded from the file to avoid
+    repeated I/O and parsing. The returned Config object is always a new
+    instance, safe to modify.
 
     Args:
         filepath: Path to the config file. If it doesn't exist, defaults are used.
@@ -161,28 +189,12 @@ def load_config_from_file(filepath: str = "config.json") -> Config:
         A :class:`Config` instance with data merged with :data:`DEFAULT_CONFIG`.
         Unknown keys are preserved.
     """
-    if not os.path.exists(filepath):
-        cfg = Config()
-        validate_config(cfg)
-        return cfg
+    user_cfg = _read_config_file(filepath)
 
-    with open(filepath, encoding="utf-8") as f:
-        if filepath.endswith(".json"):
-            user_cfg = json.load(f)
-        elif filepath.endswith(".yaml") or filepath.endswith(".yml"):
-            try:
-                from yaml import safe_load as _yaml_safe_load  # type: ignore
-
-                user_cfg = _yaml_safe_load(f)
-            except ImportError as e:
-                raise ImportError("PyYAML is required to load YAML config files") from e
-        else:
-            raise ValueError("Config file must be JSON or YAML format")
-
-    if not isinstance(user_cfg, dict):
+    if user_cfg is not None and not isinstance(user_cfg, dict):
         raise ValueError("Configuration file must contain a JSON/YAML object at the root")
 
-    cfg = Config.from_dict(user_cfg)
+    cfg = Config.from_dict(copy.deepcopy(user_cfg))
     validate_config(cfg)
     return cfg
 
@@ -206,6 +218,9 @@ def save_config_to_file(config: Any, filepath: str) -> None:
                 raise ImportError("PyYAML is required to save YAML config files") from e
         else:
             raise ValueError("Config file must be JSON or YAML format")
+
+    # Invalidate cache since the file on disk has changed
+    _read_config_file.cache_clear()
 
 
 def get_huggingface_token(config: Config | dict[str, Any]) -> str | None:
