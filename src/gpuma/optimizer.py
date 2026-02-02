@@ -25,34 +25,7 @@ from .structure import Structure
 
 logger = logging.getLogger(__name__)
 
-
-@functools.lru_cache(maxsize=1)
-def _load_calculator_impl(
-    device: str,
-    model_name: str,
-    model_path: str | None,
-    model_cache_dir: str | None,
-    huggingface_token: str | None,
-    huggingface_token_file: str | None,
-) -> FAIRChemCalculator:
-    """Load a calculator with LRU caching.
-
-    Constructs a temporary Config object to pass to load_model_fairchem.
-    """
-    # Reconstruct a minimal Config object required by load_model_fairchem
-    config_data = {
-        "optimization": {
-            "device": device,
-            "model_name": model_name,
-            "model_path": model_path,
-            "model_cache_dir": model_cache_dir,
-            "huggingface_token": huggingface_token,
-            "huggingface_token_file": huggingface_token_file,
-        }
-    }
-    config = Config(config_data)
-    return load_model_fairchem(config)
-
+_CALCULATOR_CACHE: dict[tuple, FAIRChemCalculator] = {}
 
 def _get_cached_calculator(config: Config) -> FAIRChemCalculator:
     """Retrieve or load a calculator based on configuration parameters."""
@@ -210,6 +183,7 @@ def _optimize_batch_structures(
     else:
         optimizer = torch_sim.Optimizer.gradient_descent
     convergence_fn = torch_sim.generate_energy_convergence_fn(energy_tol=1e-6)
+    convergence_fn = torch_sim.generate_force_convergence_fn(force_tol=1e-2)
 
     ase_structures = [
         Atoms(
@@ -239,7 +213,7 @@ def _optimize_batch_structures(
         optimizer=optimizer,
         convergence_fn=convergence_fn,
         autobatcher=batcher,
-        steps_between_swaps=3,
+        steps_between_swaps=5,
     )
 
     final_atoms = final_state.to_atoms()

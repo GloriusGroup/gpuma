@@ -344,6 +344,7 @@ def save_xyz_file(structure: Structure, file_path: str) -> None:
 
     with open(file_path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines))
+        fh.write("\n")
 
 
 def save_multi_xyz(
@@ -369,3 +370,4 @@ def save_multi_xyz(
 
     with open(file_path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines))
+        fh.write("\n")
