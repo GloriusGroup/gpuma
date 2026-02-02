@@ -1,12 +1,14 @@
 
 import logging
-from unittest.mock import MagicMock, patch, ANY
-import pytest
-import numpy as np
+from unittest.mock import ANY, MagicMock, patch
 
-from gpuma.config import Config, DEFAULT_CONFIG, validate_config
-from gpuma.optimizer import optimize_single_structure, _optimize_batch_structures
+import numpy as np
+import pytest
+
+from gpuma.config import DEFAULT_CONFIG, Config, validate_config
+from gpuma.optimizer import _optimize_batch_structures, optimize_single_structure
 from gpuma.structure import Structure
+
 
 def test_default_config_convergence_criteria():
     """Test that default configuration has correct convergence criteria values."""
@@ -184,4 +186,4 @@ def test_batch_structure_optimization_criteria(caplog):
         assert "using force convergence criterion" in caplog.text.lower()
         mock_ts.generate_force_convergence_fn.assert_called_with(force_tol=0.03)
         # Should be called with force fn
-        mock_ts.optimize.call_args[1]["convergence_fn"] == mock_force_conv_fn
+        assert mock_ts.optimize.call_args[1]["convergence_fn"] == mock_force_conv_fn
