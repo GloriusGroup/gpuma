@@ -56,6 +56,7 @@ optimization:
 
   logging_level: INFO
 ```
+### Supported Parameters
 
 - `batch_optimization_mode`: controls the ensemble mode
   - `sequential`: ASE/BFGS per conformer with a shared calculator

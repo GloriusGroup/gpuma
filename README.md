@@ -50,16 +50,19 @@ Full documentation is available at [https://GloriusGroup.github.io/gpuma/](https
 
 Please refer to the documentation for detailed configuration options and advanced usage. Using a configuration file is highly recommended for reproducibility and ease of use.
 
+Also check the examples folder in the repository for sample config files and usage examples.
+
 ## CLI Usage
 
 The CLI is provided via the command `gpuma`. For best results, create a
 config file (JSON or YAML) and reference it in all CLI calls. 
-Refer to the 
-documentation for details on configuration options and CLI usage.
+
+Refer to the documentation for details on configuration options and CLI usage.
 
 ## Python API
 
 A minimalistic and high-level Python API is provided for easy integration into custom scripts and workflows.
+
 Please refer to the documentation for detailed usage examples and API reference.
 
 ## Known limitations
