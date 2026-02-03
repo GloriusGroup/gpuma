@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#welcome-to-mkdocs" class="md-skip">
+        <a href="#gpuma" class="md-skip">
           Skip to content
         </a>
       
@@ -298,10 +298,49 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#commands" class="md-nav__link">
+  <a href="#installation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Commands
+        Installation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Installation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#option-1-install-from-pypi-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option 1: Install from PyPI (recommended)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-2-install-from-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option 2: Install from source
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation
       
     </span>
   </a>
@@ -309,10 +348,54 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#project-layout" class="md-nav__link">
+  <a href="#cli-usage" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Project layout
+        CLI Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python API
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#license" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        License
       
     </span>
   </a>
@@ -489,10 +572,49 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#commands" class="md-nav__link">
+  <a href="#installation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Commands
+        Installation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Installation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#option-1-install-from-pypi-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option 1: Install from PyPI (recommended)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-2-install-from-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option 2: Install from source
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation
       
     </span>
   </a>
@@ -500,10 +622,54 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#project-layout" class="md-nav__link">
+  <a href="#cli-usage" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Project layout
+        CLI Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python API
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#license" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        License
       
     </span>
   </a>
@@ -527,21 +693,59 @@
 
 
 
-<h1 id="welcome-to-mkdocs">Welcome to MkDocs</h1>
-<p>For full documentation visit <a href="https://www.mkdocs.org">mkdocs.org</a>.</p>
-<h2 id="commands">Commands</h2>
-<ul>
-<li><code>mkdocs new [dir-name]</code> - Create a new project.</li>
-<li><code>mkdocs serve</code> - Start the live-reloading docs server.</li>
-<li><code>mkdocs build</code> - Build the documentation site.</li>
-<li><code>mkdocs -h</code> - Print help message and exit.</li>
-</ul>
-<h2 id="project-layout">Project layout</h2>
-<pre><code>mkdocs.yml    # The configuration file.
-docs/
-    index.md  # The documentation homepage.
-    ...       # Other markdown pages, images and other files.
+<h1 id="gpuma">GPUMA</h1>
+<div align="center">
+  <img src="docs/logo.png" alt="PAYN Logo"/>
+</div>
+
+<hr />
+<p>GPUMA is a minimalist Python toolkit for facile and rapid high-throughput molecular geometry optimization 
+based on the <a href="https://arxiv.org/abs/2505.08762">UMA/OMol25 machine-learning interatomic potential</a>.  </p>
+<p>GPUMA is especially designed for batch optimizations of many structures (conformer ensembles, datasets) on GPU,
+ensuring efficient parallelization and maximum GPU utilization by leveraging the <a href="https://arxiv.org/abs/2508.06628">torch-sim library</a>.
+It wraps Fairchem UMA models and torch-sim functionality to provide both a simple command-line 
+interface (CLI) and a small but expressive Python API for single- and multi-structure optimizations.</p>
+<p>If conformer sampling is desired, GPUMA can generate conformer ensembles on the fly from SMILES strings 
+using the <a href="https://digital-chemistry-laboratory.github.io/morfeus/">morfeus library</a>. Alternative input formats
+are described in the CLI section below.</p>
+<p>Feedback and improvements are always welcome!</p>
+<h2 id="installation">Installation</h2>
+<h3 id="option-1-install-from-pypi-recommended">Option 1: Install from PyPI (recommended)</h3>
+<pre><code class="language-bash">pip install gpuma
 </code></pre>
+<p>This installs <code>gpuma</code> together with its core dependencies. Make sure you are using
+Python 3.12 or newer.</p>
+<h3 id="option-2-install-from-source">Option 2: Install from source</h3>
+<pre><code class="language-bash"># clone the repository
+git clone https://github.com/niklashoelter/gpuma.git
+cd gpuma
+
+# install using (uv) pip
+uv pip install .
+# or, without uv:
+pip install .
+</code></pre>
+<h2 id="documentation">Documentation</h2>
+<p>Full documentation is available at <a href="https://niklashoelter.github.io/gpuma/">https://niklashoelter.github.io/gpuma/</a>.</p>
+<p>Please refer to the documentation for detailed configuration options and advanced usage. Using a configuration file is highly recommended for reproducibility and ease of use.</p>
+<p>Also check the examples folder in the repository for sample config files and usage examples.</p>
+<h2 id="cli-usage">CLI Usage</h2>
+<p>The CLI is provided via the command <code>gpuma</code>. For best results, create a
+config file (JSON or YAML) and reference it in all CLI calls. </p>
+<p>Refer to the documentation for details on configuration options and CLI usage.</p>
+<h2 id="python-api">Python API</h2>
+<p>A minimalistic and high-level Python API is provided for easy integration into custom scripts and workflows.</p>
+<p>Please refer to the documentation for detailed usage examples and API reference.</p>
+<h2 id="known-limitations">Known limitations</h2>
+<p>When a run is started from SMILES, an RDKit force field (via the morfeus library) is used to generate an initial structure. Spin is not taken into account during this step, so the initial estimated geometries can be incorrect. When the UMA/Omol25 models are applied subsequently, the structure can sometimes be optimized to a maximum rather than a minimum because the model is not provided with Hessian matrices. This behavior only affects runs originating from SMILES; it does not occur with better starting geometries (e.g., when starting from XYZ files).</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<ul>
+<li>Missing libraries: install optional dependencies like <code>pyyaml</code> if you use YAML configs.</li>
+<li>Fairchem/UMA: ensure network access for model downloads and optionally set or provide 
+<code>huggingface_token</code> (e.g., via a token file) to access the UMA model family.</li>
+</ul>
+<h2 id="license">License</h2>
+<p>MIT License (see LICENSE)</p>
 
 
 
