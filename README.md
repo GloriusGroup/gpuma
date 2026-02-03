@@ -4,6 +4,8 @@
   <img src="docs/logo.png" alt="PAYN Logo"/>
 </div>
 
+---
+
 GPUMA is a minimalist Python toolkit for facile and rapid high-throughput molecular geometry optimization 
 based on the [UMA/OMol25 machine-learning interatomic potential](https://arxiv.org/abs/2505.08762).  
 
