@@ -1,7 +1,7 @@
 # GPUMA
 
 <div align="center">
-  <img src="docs/logo.png" alt="PAYN Logo"/>
+  <img src="docs/logo_bg.png" alt="GPUMA Logo"/>
 </div>
 
 ---
