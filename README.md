@@ -63,7 +63,7 @@ Refer to the documentation for details on configuration options and CLI usage.
 
 A minimalistic and high-level Python API is provided for easy integration into custom scripts and workflows.
 
-Please refer to the documentation for detailed usage examples and API reference.
+Please refer to the documentation and examples for detailed usage examples and API reference.
 
 ## Known limitations
 
