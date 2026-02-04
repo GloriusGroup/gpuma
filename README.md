@@ -31,6 +31,9 @@ pip install gpuma
 This installs `gpuma` together with its core dependencies. Make sure you are using
 Python 3.12 or newer.
 
+> ⚠️ **Required for UMA models:**</br>
+> To access the UMA models on Hugging Face, **you must provide a token** either via the `HUGGINGFACE_TOKEN` environment variable or via the config (direct token string or path to a file containing the token).
+
 ### Option 2: Install from source
 
 ```bash
@@ -48,20 +51,48 @@ pip install .
 
 Full documentation is available at [https://niklashoelter.github.io/gpuma/](https://niklashoelter.github.io/gpuma/).
 
-Please refer to the documentation for detailed configuration options and advanced usage. Using a configuration file is highly recommended for reproducibility and ease of use.
+For local browsing of the Markdown sources, see in particular:
+- [docs/index.md](docs/index.md) – overview and getting started
+- [docs/install.md](docs/install.md) – installation details
+- [docs/cli.md](docs/cli.md) – CLI options and input formats
+- [docs/config.md](docs/config.md) – configuration file schema and examples
+- [docs/reference.md](docs/reference.md) – API and configuration reference
 
-Also check the examples folder in the repository for sample config files and usage examples.
+Using a configuration file is highly recommended for reproducibility and ease of use.
+
+Also check the [examples/](examples) folder in the repository for sample config files and usage examples:
+- [examples/config.json](examples/config.json) – minimal example configuration
+- [examples/example_single_optimization.py](examples/example_single_optimization.py) – single-structure optimization from Python
+- [examples/example_ensemble_optimization.py](examples/example_ensemble_optimization.py) – ensemble/multi-structure optimization from Python
 
 ## CLI Usage
 
 The CLI is provided via the command `gpuma`. For best results, create a
-config file (JSON or YAML) and reference it in all CLI calls. 
+config file (JSON or YAML) and reference it in all CLI calls (see [examples/config.json](examples/config.json) for a minimal example).
 
-Refer to the documentation for details on configuration options and CLI usage.
+### Examples: Batch optimization of multiple XYZ structures
+
+Optimize all XYZ files in a directory (each file containing a single structure):
+
+```bash
+gpuma optimize --config examples/config.json --xyz-dir examples/example_input_xyzs/multi_xyz_dir/
+```
+
+Optimize multiple structures contained in a single multi-XYZ file:
+
+```bash
+gpuma optimize --config examples/config.json --xyz examples/example_input_xyzs/multi_xyz_file.xyz
+```
+
+Refer to the [CLI documentation](docs/cli.md) for details on configuration options, supported input formats (SMILES, XYZ, directories, multi-XYZ files), and additional CLI examples.
 
 ## Python API
 
 A minimalistic and high-level Python API is provided for easy integration into custom scripts and workflows.
+
+For example usage, see:
+- [examples/example_single_optimization.py](examples/example_single_optimization.py)
+- [examples/example_ensemble_optimization.py](examples/example_ensemble_optimization.py)
 
 Please refer to the documentation and examples for detailed usage examples and API reference.
 
