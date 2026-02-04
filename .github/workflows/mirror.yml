@@ -9,6 +9,7 @@ on:
 jobs:
     mirror:
         runs-on: ubuntu-latest
+        if: github.repository == 'NiklasHoelter/gpuma'
         name: mirror
         steps:
           # 1. Checkout your code (fetch-depth: 0 is crucial for a full mirror)
