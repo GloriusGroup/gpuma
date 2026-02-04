@@ -1,0 +1,19 @@
+name: Mirror to AK Glorius Group Repo
+
+on:
+  push:
+    branches: [ "master", "gh-pages" ]
+
+jobs:
+    mirror:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v3
+            with:
+              fetch-depth: 0
+          - uses: yesolutions/mirror-action@master
+            with:
+              source_repo: ${{ github.repository }}
+              target_repo: GloriusGroup/${{ github.repository }}
+              github_token: ${{ secrets.GPUMA_MIRROR_GROUP_REPO_TOKEN }}
+              commit_message: "Mirror from ${{ github.repository }}:${{ github.ref }} to GloriusGroup/${{ github.repository }}"

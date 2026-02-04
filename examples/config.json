@@ -20,6 +20,6 @@
     "huggingface_token": null,
     "huggingface_token_file": null,
 
-    "logging_level": "DEBUG"
+    "logging_level": "INFO"
   }
 }
