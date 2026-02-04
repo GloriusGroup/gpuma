@@ -19,4 +19,5 @@ jobs:
           # 2. Run the mirror command manually
           - name: Push to Mirror
             run: |
+              git config --unset-all http.https://github.com/.extraheader
               git push --mirror https://oauth2:${{ secrets.GPUMA_MIRROR_GROUP_REPO_TOKEN }}@github.com/GloriusGroup/gpuma.git
