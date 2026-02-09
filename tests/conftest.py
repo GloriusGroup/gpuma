@@ -255,7 +255,6 @@ def mock_load_models(request):
          patch("gpuma.optimizer.load_model_torchsim") as mock_load_ts, \
          patch("gpuma.optimizer._get_cached_torchsim_model") as mock_get_cached_ts:
 
-        # Setup mocks
         mock_calc = MagicMock()
         mock_calc.results = {}
 
