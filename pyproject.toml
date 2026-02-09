@@ -1,9 +1,9 @@
 [project]
 name = "gpuma"
-version = "0.5.0"
+version = "0.5.1"
 description = "GPUMA - Geometry optimization toolkit using Fairchem UMA models and Torch-Sim"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = "==3.12.*"
 license = "MIT"
 authors = [
   { name = "Niklas Hölter", email = "niklas.hoelter@uni-muenster.de" },
@@ -12,7 +12,6 @@ keywords = ["chemistry", "geometry-optimization", "uma", "fairchem", "ase", "mli
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
   "Intended Audience :: Science/Research",
   "Topic :: Scientific/Engineering :: Chemistry",
   "Topic :: Scientific/Engineering :: Physics",
