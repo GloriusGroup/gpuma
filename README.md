@@ -27,10 +27,19 @@ Feedback and improvements are always welcome!
 
 ### Option 1: Install from PyPI (recommended)
 
-This installs `gpuma` together with its core dependencies. 
+This installs `gpuma` together with its core dependencies.
 At the moment, installation and tests have only been
 validated under Python 3.12; using other Python versions is currently
 considered experimental.
+
+> **GPU support:** By default, `pip install` may pull a CPU-only build of
+> PyTorch (especially on Windows). To enable GPU acceleration, install
+> PyTorch with CUDA **before** installing GPUMA. Visit
+> [pytorch.org/get-started](https://pytorch.org/get-started/locally/) to
+> get the install command for your platform and CUDA version, e.g.:
+> ```bash
+> pip install torch --index-url https://download.pytorch.org/whl/cu124
+> ```
 
 - **Using a `uv` virtual environment**
   ```powershell
@@ -38,6 +47,9 @@ considered experimental.
   uv venv .venv
 
   # activate the environment
+
+  # install PyTorch with CUDA support (pick your CUDA version at https://pytorch.org)
+  uv pip install torch --index-url https://download.pytorch.org/whl/cu124
 
   # install gpuma from PyPI inside the environment
   uv pip install gpuma
@@ -48,6 +60,9 @@ considered experimental.
   # create and activate a fresh environment with Python 3.12
   conda create -n gpuma-py312 python=3.12
   conda activate gpuma-py312
+
+  # install PyTorch with CUDA support (pick your CUDA version at https://pytorch.org)
+  pip install torch --index-url https://download.pytorch.org/whl/cu124
 
   # install gpuma from PyPI inside the environment
   pip install gpuma
@@ -60,6 +75,9 @@ considered experimental.
 # clone the repository
 git clone https://github.com/niklashoelter/gpuma.git
 cd gpuma
+
+# install PyTorch with CUDA support (pick your CUDA version at https://pytorch.org)
+pip install torch --index-url https://download.pytorch.org/whl/cu124
 
 # install using (uv) pip
 uv pip install .
