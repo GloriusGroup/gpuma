@@ -191,3 +191,169 @@ def test_load_orb_calculator_with_d3(model_name: str):
     energy = atoms.get_potential_energy()
     assert isinstance(energy, float)
     assert energy != 0.0, f"Energy is exactly 0.0 for model {model_name} with D3"
+
+
+# ---------------------------------------------------------------------------
+# GPU device selection tests
+#
+# These tests verify that models are actually placed on the correct GPU.
+# They target cuda:3 which is typically free on multi-GPU machines.
+# ---------------------------------------------------------------------------
+
+TARGET_GPU = 3  # The GPU index we test specific device selection with
+
+
+def _skip_if_no_cuda():
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA not available")
+
+
+def _skip_if_gpu_missing(idx: int):
+    _skip_if_no_cuda()
+    if torch.cuda.device_count() <= idx:
+        pytest.skip(f"GPU {idx} not available (only {torch.cuda.device_count()} GPUs)")
+
+
+def _get_model_device_index(model) -> int:
+    """Extract the GPU index from an ORB or Fairchem torch-sim model."""
+    # torch-sim models expose a .device property (torch.device)
+    dev = model.device if hasattr(model, "device") else None
+    if dev is not None and hasattr(dev, "index") and dev.index is not None:
+        return dev.index
+    # Fallback: check first parameter
+    for param in model.parameters() if hasattr(model, "parameters") else []:
+        if param.device.type == "cuda":
+            return param.device.index or 0
+        break
+    return torch.cuda.current_device()
+
+
+# --- ORB-v3: cuda:3 device placement ---
+
+
+def test_orb_calculator_on_cuda3():
+    """ORB calculator on cuda:3 runs inference on the correct GPU."""
+    _skip_if_gpu_missing(TARGET_GPU)
+    config = Config({
+        "optimization": {
+            "model_type": "orb",
+            "model_name": "orb_v3_direct_omol",
+            "device": f"cuda:{TARGET_GPU}",
+        }
+    })
+    calc = load_calculator(config)
+    assert calc is not None
+
+    atoms = METHANE.copy()
+    atoms.calc = calc
+    atoms.info = {"charge": 0, "spin": 1}
+    energy = atoms.get_potential_energy()
+    assert isinstance(energy, float)
+    assert energy != 0.0
+
+
+def test_orb_torchsim_on_cuda3():
+    """ORB torch-sim model is placed on cuda:3."""
+    _skip_if_gpu_missing(TARGET_GPU)
+    config = Config({
+        "optimization": {
+            "model_type": "orb",
+            "model_name": "orb_v3_direct_omol",
+            "device": f"cuda:{TARGET_GPU}",
+        }
+    })
+    model = load_torchsim_model(config)
+    assert model is not None
+    assert _get_model_device_index(model) == TARGET_GPU
+
+
+# --- Fairchem: cuda:3 device placement ---
+
+
+def test_fairchem_calculator_on_cuda3():
+    """Fairchem calculator on cuda:3 runs inference on the correct GPU."""
+    _skip_if_gpu_missing(TARGET_GPU)
+    if not _has_hf_token():
+        pytest.skip("HF_TOKEN not set")
+    config = Config({
+        "optimization": {
+            "model_type": "fairchem",
+            "model_name": "uma-s-1p1",
+            "device": f"cuda:{TARGET_GPU}",
+        }
+    })
+    calc = load_calculator(config)
+    assert calc is not None
+
+    atoms = METHANE.copy()
+    atoms.calc = calc
+    atoms.info = {"charge": 0, "spin": 1}
+    energy = atoms.get_potential_energy()
+    assert isinstance(energy, float)
+    assert energy != 0.0
+
+    # Verify Fairchem actually selected the right GPU via set_device
+    assert torch.cuda.current_device() == TARGET_GPU
+
+
+def test_fairchem_torchsim_on_cuda3():
+    """Fairchem torch-sim model is placed on cuda:3 via set_device."""
+    _skip_if_gpu_missing(TARGET_GPU)
+    if not _has_hf_token():
+        pytest.skip("HF_TOKEN not set")
+    config = Config({
+        "optimization": {
+            "model_type": "fairchem",
+            "model_name": "uma-s-1p1",
+            "device": f"cuda:{TARGET_GPU}",
+        }
+    })
+    model = load_torchsim_model(config)
+    assert model is not None
+    # Fairchem uses set_device, so current_device should be TARGET_GPU
+    assert torch.cuda.current_device() == TARGET_GPU
+
+
+# --- Fallback: invalid GPU index ---
+
+
+def test_invalid_gpu_index_fallback_orb(caplog):
+    """Requesting a non-existent GPU falls back to cuda:0 with a warning."""
+    _skip_if_no_cuda()
+    num_gpus = torch.cuda.device_count()
+    bad_index = num_gpus + 5  # guaranteed to not exist
+    config = Config({
+        "optimization": {
+            "model_type": "orb",
+            "model_name": "orb_v3_direct_omol",
+            "device": f"cuda:{bad_index}",
+        }
+    })
+    calc = load_calculator(config)
+    assert calc is not None
+    assert "Falling back to cuda:0" in caplog.text
+
+    atoms = METHANE.copy()
+    atoms.calc = calc
+    atoms.info = {"charge": 0, "spin": 1}
+    energy = atoms.get_potential_energy()
+    assert isinstance(energy, float)
+
+
+def test_invalid_gpu_index_fallback_fairchem(caplog):
+    """Requesting a non-existent GPU falls back to cuda:0 for Fairchem."""
+    _skip_if_no_cuda()
+    if not _has_hf_token():
+        pytest.skip("HF_TOKEN not set")
+    num_gpus = torch.cuda.device_count()
+    bad_index = num_gpus + 5
+    config = Config({
+        "optimization": {
+            "model_type": "fairchem",
+            "model_name": "uma-s-1p1",
+            "device": f"cuda:{bad_index}",
+        }
+    })
+    calc = load_calculator(config)
+    assert calc is not None
+    assert "Falling back to cuda:0" in caplog.text

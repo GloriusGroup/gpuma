@@ -52,7 +52,7 @@ def example_batch_from_multi_xyz():
     """Example 2: Batch optimize structures from a multi-structure XYZ file."""
     print("\n=== Example 2: Batch optimization from multi-XYZ file ===")
 
-    input_file = "example_input_xyzs/butene_triplet_multi.xyz"
+    input_file = "example_input_xyzs/secondary-amines_multifile.xyz"
     output_file = os.path.join(OUTPUT_DIR, "python_batch_from_multi_xyz_optimized.xyz")
 
     config = load_config_from_file("config.json")

@@ -111,10 +111,11 @@ optimization:
 - `model_path`: local path to a Fairchem UMA model checkpoint (overrides `model_name`
   if set; not used for ORB models)
 - `model_cache_dir`: directory to cache downloaded models (default: `~/.cache/fairchem`)
-- `device`: compute device string; one of `cpu` or `cuda`.
-  Fairchem only distinguishes between CPU and CUDA; selection of specific
-  GPUs should be handled via the `CUDA_VISIBLE_DEVICES` environment variable
-  before running the CLI or Python code.
+- `device`: compute device string; `cpu`, `cuda` (use default/next available GPU),
+  or `cuda:N` to select a specific GPU (e.g. `cuda:0`, `cuda:1`).
+  If the requested GPU index does not exist, GPUMA falls back to `cuda:0` with
+  a warning. Alternatively, you can use the `CUDA_VISIBLE_DEVICES` environment
+  variable to control GPU visibility before running the CLI or Python code.
 
 - `huggingface_token`: optional HF token for model access (if required)
 - `huggingface_token_file`: optional file path to read the HF token from

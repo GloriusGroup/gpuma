@@ -8,6 +8,7 @@ from gpuma.config import Config
 from gpuma.models import (
     _device_for_torch,
     _parse_device_string,
+    _setup_fairchem_device,
     load_calculator,
     load_torchsim_model,
 )
@@ -34,16 +35,156 @@ def test_parse_device_string_unknown():
     assert _parse_device_string("") == "cpu"
 
 
-def test_device_for_torch():
+def test_parse_device_string_gpu_index_fallback():
+    """Requesting a GPU index that doesn't exist falls back to cuda:0."""
+    with patch("torch.cuda.is_available", return_value=True), \
+         patch("torch.cuda.device_count", return_value=2):
+        # Valid indices
+        assert _parse_device_string("cuda:0") == "cuda:0"
+        assert _parse_device_string("cuda:1") == "cuda:1"
+        # Index out of range
+        assert _parse_device_string("cuda:5") == "cuda:0"
+
+    with patch("torch.cuda.is_available", return_value=True), \
+         patch("torch.cuda.device_count", return_value=1):
+        assert _parse_device_string("cuda:0") == "cuda:0"
+        assert _parse_device_string("cuda:3") == "cuda:0"
+
+
+def test_parse_device_string_invalid_index():
+    """Non-integer GPU index falls back to plain 'cuda'."""
     with patch("torch.cuda.is_available", return_value=True):
+        assert _parse_device_string("cuda:abc") == "cuda"
+
+
+def test_device_for_torch():
+    with patch("torch.cuda.is_available", return_value=True), \
+         patch("torch.cuda.device_count", return_value=4):
         dev = _device_for_torch("cuda:0")
         assert isinstance(dev, torch.device)
         assert dev.type == "cuda"
         assert dev.index == 0
 
+        dev = _device_for_torch("cuda:2")
+        assert dev.type == "cuda"
+        assert dev.index == 2
+
     with patch("torch.cuda.is_available", return_value=False):
         dev = _device_for_torch("cuda")
         assert dev.type == "cpu"
+
+
+def test_setup_fairchem_device_plain_cuda():
+    """Plain 'cuda' returns 'cuda' without calling set_device."""
+    with patch("torch.cuda.is_available", return_value=True), \
+         patch("torch.cuda.set_device") as mock_set:
+        result = _setup_fairchem_device("cuda")
+        assert result == "cuda"
+        mock_set.assert_not_called()
+
+
+def test_setup_fairchem_device_with_index():
+    """'cuda:N' calls set_device(N) and returns plain 'cuda'."""
+    with patch("torch.cuda.is_available", return_value=True), \
+         patch("torch.cuda.device_count", return_value=4), \
+         patch("torch.cuda.set_device") as mock_set:
+        result = _setup_fairchem_device("cuda:2")
+        assert result == "cuda"
+        mock_set.assert_called_once_with(2)
+
+
+def test_setup_fairchem_device_index_fallback():
+    """Invalid GPU index falls back to cuda:0 and calls set_device(0)."""
+    with patch("torch.cuda.is_available", return_value=True), \
+         patch("torch.cuda.device_count", return_value=1), \
+         patch("torch.cuda.set_device") as mock_set:
+        result = _setup_fairchem_device("cuda:3")
+        assert result == "cuda"
+        mock_set.assert_called_once_with(0)
+
+
+def test_setup_fairchem_device_cpu():
+    """CPU input returns 'cpu' without touching CUDA."""
+    result = _setup_fairchem_device("cpu")
+    assert result == "cpu"
+
+
+def test_parse_device_cuda3_with_enough_gpus():
+    """cuda:3 is accepted when 4+ GPUs are available."""
+    with patch("torch.cuda.is_available", return_value=True), \
+         patch("torch.cuda.device_count", return_value=4):
+        assert _parse_device_string("cuda:3") == "cuda:3"
+
+
+def test_parse_device_cuda3_insufficient_gpus():
+    """cuda:3 falls back to cuda:0 when only 2 GPUs are available."""
+    with patch("torch.cuda.is_available", return_value=True), \
+         patch("torch.cuda.device_count", return_value=2):
+        assert _parse_device_string("cuda:3") == "cuda:0"
+
+
+def test_device_for_torch_cuda3():
+    """cuda:3 produces torch.device('cuda', 3) when GPUs are available."""
+    with patch("torch.cuda.is_available", return_value=True), \
+         patch("torch.cuda.device_count", return_value=4):
+        dev = _device_for_torch("cuda:3")
+        assert dev.type == "cuda"
+        assert dev.index == 3
+
+
+def test_setup_fairchem_device_cuda3():
+    """cuda:3 calls set_device(3) for Fairchem when GPU 3 exists."""
+    with patch("torch.cuda.is_available", return_value=True), \
+         patch("torch.cuda.device_count", return_value=4), \
+         patch("torch.cuda.set_device") as mock_set:
+        result = _setup_fairchem_device("cuda:3")
+        assert result == "cuda"
+        mock_set.assert_called_once_with(3)
+
+
+def test_setup_fairchem_device_cuda3_fallback():
+    """cuda:3 falls back to set_device(0) when only 1 GPU exists."""
+    with patch("torch.cuda.is_available", return_value=True), \
+         patch("torch.cuda.device_count", return_value=1), \
+         patch("torch.cuda.set_device") as mock_set:
+        result = _setup_fairchem_device("cuda:3")
+        assert result == "cuda"
+        mock_set.assert_called_once_with(0)
+
+
+def test_config_with_cuda3_orb(mock_hf_token):
+    """Config with cuda:3 dispatches correctly to ORB backend."""
+    with patch("torch.cuda.is_available", return_value=True), \
+         patch("torch.cuda.device_count", return_value=4):
+        config = Config({
+            "optimization": {
+                "model_type": "orb",
+                "model_name": "orb_v3_direct_omol",
+                "device": "cuda:3",
+            }
+        })
+        with patch("gpuma.models._load_orb_calculator") as mock_orb:
+            mock_orb.return_value = MagicMock()
+            load_calculator(config)
+            mock_orb.assert_called_once_with(config)
+
+
+def test_config_with_cuda3_fairchem(mock_hf_token):
+    """Config with cuda:3 dispatches correctly to Fairchem with set_device."""
+    with patch("torch.cuda.is_available", return_value=True), \
+         patch("torch.cuda.device_count", return_value=4), \
+         patch("torch.cuda.set_device"):
+        config = Config({
+            "optimization": {
+                "model_type": "fairchem",
+                "model_name": "uma-s-1p1",
+                "device": "cuda:3",
+            }
+        })
+        with patch("gpuma.models._load_fairchem_calculator") as mock_fc:
+            mock_fc.return_value = MagicMock()
+            load_calculator(config)
+            mock_fc.assert_called_once_with(config)
 
 
 # ---------------------------------------------------------------------------

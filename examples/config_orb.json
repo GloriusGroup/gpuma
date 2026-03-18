@@ -16,7 +16,7 @@
     "model_name": "orb_v3_direct_omol",
     "model_path": null,
     "model_cache_dir": null,
-    "device": "cuda",
+    "device": "cuda:3",
 
     "huggingface_token": null,
     "huggingface_token_file": null,
