@@ -91,7 +91,9 @@ def resolve_model_type(config: Config | dict[str, Any]) -> str:
     if isinstance(config, Config):
         raw = str(getattr(config.optimization, "model_type", "fairchem")).strip().lower()
     else:
-        raw = str((config or {}).get("optimization", {}).get("model_type", "fairchem")).strip().lower()
+        raw = str(
+            (config or {}).get("optimization", {}).get("model_type", "fairchem")
+        ).strip().lower()
     canonical = _MODEL_TYPE_ALIASES.get(raw)
     if canonical is None:
         raise ValueError(

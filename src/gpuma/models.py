@@ -34,6 +34,36 @@ from .decorators import time_it
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Available model names
+# ---------------------------------------------------------------------------
+
+#: Fairchem UMA model names accepted by ``fairchem.core.pretrained_mlip``.
+AVAILABLE_FAIRCHEM_MODELS: tuple[str, ...] = (
+    "uma-s-1p2",
+    "uma-s-1p1",
+    "uma-m-1p1",
+)
+
+#: ORB-v3 model names accepted by ``orb_models.forcefield.pretrained``.
+#: Use the **underscored** form (e.g. ``orb_v3_direct_omol``) as
+#: ``model_name`` in the configuration.
+AVAILABLE_ORB_MODELS: tuple[str, ...] = (
+    # ORB-v3 — omol
+    "orb_v3_conservative_omol",
+    "orb_v3_direct_omol",
+    # ORB-v3 — omat
+    "orb_v3_conservative_20_omat",
+    "orb_v3_conservative_inf_omat",
+    "orb_v3_direct_20_omat",
+    "orb_v3_direct_inf_omat",
+    # ORB-v3 — mpa
+    "orb_v3_conservative_20_mpa",
+    "orb_v3_conservative_inf_mpa",
+    "orb_v3_direct_20_mpa",
+    "orb_v3_direct_inf_mpa",
+)
+
+# ---------------------------------------------------------------------------
 # Device helpers
 # ---------------------------------------------------------------------------
 
@@ -260,7 +290,11 @@ def _load_orb_pretrained(config: Config):
 
         functional = str(getattr(config.optimization, "d3_functional", "PBE"))
         damping = str(getattr(config.optimization, "d3_damping", "BJ"))
-        logger.info("Applying D3 dispersion correction (functional=%s, damping=%s)", functional, damping)
+        logger.info(
+            "Applying D3 dispersion correction (functional=%s, damping=%s)",
+            functional,
+            damping,
+        )
         orbff = D3SumModel(orbff, AlchemiDFTD3(functional=functional, damping=damping))
 
     return orbff, atoms_adapter, device

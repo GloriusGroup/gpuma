@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import functools
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from ase import Atoms
 from ase.optimize import BFGS
@@ -24,9 +24,6 @@ from .config import Config, load_config_from_file, resolve_model_type
 from .decorators import time_it
 from .models import _parse_device_string, load_calculator, load_torchsim_model
 from .structure import Structure
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -348,7 +345,11 @@ def _optimize_batch(
     # Select optimizer
     optimizer_name = str(getattr(config.optimization, "batch_optimizer", "fire") or "fire")
     optimizer_name = optimizer_name.strip().lower()
-    optimizer = torch_sim.Optimizer.fire if optimizer_name == "fire" else torch_sim.Optimizer.gradient_descent
+    optimizer = (
+        torch_sim.Optimizer.fire
+        if optimizer_name == "fire"
+        else torch_sim.Optimizer.gradient_descent
+    )
 
     convergence_fn = _resolve_batch_convergence(config)
 

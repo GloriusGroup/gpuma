@@ -37,7 +37,12 @@ from .io_handler import (
     smiles_to_ensemble,
     smiles_to_xyz,
 )
-from .models import load_calculator, load_torchsim_model
+from .models import (
+    AVAILABLE_FAIRCHEM_MODELS,
+    AVAILABLE_ORB_MODELS,
+    load_calculator,
+    load_torchsim_model,
+)
 from .optimizer import optimize_single_structure, optimize_structure_batch
 from .structure import Structure
 
@@ -64,6 +69,8 @@ __all__ = [
     # Model loading
     "load_calculator",
     "load_torchsim_model",
+    "AVAILABLE_FAIRCHEM_MODELS",
+    "AVAILABLE_ORB_MODELS",
     # Configuration
     "Config",
     "default_config",

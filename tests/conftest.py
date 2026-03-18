@@ -21,7 +21,7 @@ def _mock_module(name):
 
 # Mock Torch
 try:
-    import torch
+    import torch  # noqa: F401
 except ImportError:
     if "torch" not in sys.modules:
         torch_mock = MagicMock()
@@ -114,7 +114,7 @@ except ImportError:
 
 # Mock Fairchem
 try:
-    import fairchem.core
+    import fairchem.core  # noqa: F401
 except ImportError:
     fairchem_core = _mock_module("fairchem.core")
     fairchem_core.FAIRChemCalculator = MagicMock()
@@ -122,7 +122,7 @@ except ImportError:
 
 # Mock RDKit
 try:
-    from rdkit import Chem
+    from rdkit import Chem  # noqa: F401
 except ImportError:
     rdkit_chem = _mock_module("rdkit.Chem")
 
@@ -137,7 +137,7 @@ except ImportError:
 
 # Mock Morfeus
 try:
-    from morfeus import conformer
+    from morfeus import conformer  # noqa: F401
 except ImportError:
     morfeus_conformer = _mock_module("morfeus.conformer")
 
@@ -166,7 +166,13 @@ except ImportError:
                         self.coordinates = [[0.0, 0.0, 0.0]] * 14
                     else:
                         self.elements = ["C", "H", "H", "H", "H"]
-                        self.coordinates = [[0.0,0.0,0.0], [1.0,0.0,0.0], [0.0,1.0,0.0], [0.0,0.0,1.0], [0.0,0.0,-1.0]]
+                        self.coordinates = [
+                            [0.0, 0.0, 0.0],
+                            [1.0, 0.0, 0.0],
+                            [0.0, 1.0, 0.0],
+                            [0.0, 0.0, 1.0],
+                            [0.0, 0.0, -1.0],
+                        ]
 
             smiles = getattr(mol, "_smiles", "")
             conf = MockConformer(smiles)
@@ -190,7 +196,7 @@ except ImportError:
 
 # Mock orb_models
 try:
-    import orb_models
+    import orb_models  # noqa: F401
 except ImportError:
     _mock_module("orb_models.forcefield")
     _mock_module("orb_models.forcefield.pretrained")
@@ -202,7 +208,7 @@ except ImportError:
 
 # --- End Mocking ---
 
-from gpuma.structure import Structure
+from gpuma.structure import Structure  # noqa: E402
 
 
 @pytest.fixture
@@ -256,6 +262,7 @@ H 0.630000 -0.630000 -0.630000
 def mock_load_models(request):
     """Automatically mock model loading functions to prevent network access."""
     if "real_model" in request.keywords:
+        yield
         return
 
     with patch("gpuma.optimizer.load_calculator") as mock_load_calc, \

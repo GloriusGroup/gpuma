@@ -59,6 +59,51 @@ Functions for directly loading model calculators and torch-sim wrappers.
       show_root_full_path: false
       heading_level: 3
 
+## I/O & Structure Conversion
+Functions for reading, writing, and converting molecular structures.
+
+::: gpuma.io_handler.read_xyz
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
+
+::: gpuma.io_handler.read_multi_xyz
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
+
+::: gpuma.io_handler.read_xyz_directory
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
+
+::: gpuma.io_handler.smiles_to_xyz
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
+
+::: gpuma.io_handler.smiles_to_ensemble
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
+
+::: gpuma.io_handler.save_xyz_file
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
+
+::: gpuma.io_handler.save_multi_xyz
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
+
 ## Low-Level Optimization
 Lower-level functions used by the high-level API.
 

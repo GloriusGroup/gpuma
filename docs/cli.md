@@ -50,6 +50,15 @@ gpuma optimize --smiles "CCO" --output examples/example_output/ethanol_verbose.x
 gpuma ensemble --smiles "CCO" --conformers 3 --output examples/example_output/ethanol_ensemble_verbose.xyz --config examples/config.json
 ```
 
+### `gpuma smiles` shorthand
+
+The `gpuma smiles` command is a shorthand for single-structure optimization
+directly from a SMILES string (equivalent to `gpuma optimize --smiles`):
+
+```bash
+gpuma smiles --smiles "CCO" --output examples/example_output/ethanol_opt.xyz --config examples/config.json
+```
+
 ### Using ORB-v3 models
 
 To use ORB-v3 instead of Fairchem UMA, either set `"model_type": "orb"` in

@@ -105,12 +105,9 @@ optimization:
 - `model_type`: model backend to use; one of `fairchem` (or `uma`) for Fairchem UMA
   models, or `orb` (or `orb-v3`) for ORB-v3 models (default: `fairchem`).
   ORB-v3 uses the `orb-models` package (included in core dependencies).
-- `model_name`: model identifier.
-  - For **Fairchem**: e.g. `uma-s-1p1` (default). See
-    [fairchem-core](https://github.com/FAIR-Chem/fairchem) for available models.
-  - For **ORB-v3**: a pretrained model function name from
-    `orb_models.forcefield.pretrained`, e.g. `orb_v3_direct_omol` (recommended),
-    `orb_v3_conservative_inf_omat`, `orb_v3_direct_inf_omat`, etc.
+- `model_name`: model identifier (see [Available Models](#available-models) below).
+  - For **Fairchem**: e.g. `uma-s-1p1` (default).
+  - For **ORB-v3**: e.g. `orb_v3_direct_omol` (recommended).
 - `model_path`: local path to a Fairchem UMA model checkpoint (overrides `model_name`
   if set; not used for ORB models)
 - `model_cache_dir`: directory to cache downloaded models (default: `~/.cache/fairchem`)
@@ -128,6 +125,41 @@ optimization:
 - `d3_damping`: damping scheme for D3 correction (default: `"BJ"`). Only used
   when `d3_correction` is `true`.
 - `logging_level`: logging verbosity; e.g., `DEBUG`, `INFO`, `WARNING`
+
+### Available Models
+
+#### Fairchem UMA models (`model_type: "fairchem"`)
+
+| Model Name | Description |
+|---|---|
+| `uma-s-1p2` | UMA small, version 1.2 |
+| `uma-s-1p1` | UMA small, version 1.1 (default) |
+| `uma-m-1p1` | UMA medium, version 1.1 |
+
+> **Note:** Fairchem UMA models require a HuggingFace token for download.
+
+#### ORB-v3 models (`model_type: "orb"`)
+
+Use the **underscored** form as `model_name` in configuration.
+
+| Model Name | Description |
+|---|---|
+| `orb_v3_direct_omol` | ORB-v3 direct, omol (recommended) |
+| `orb_v3_conservative_omol` | ORB-v3 conservative, omol |
+| `orb_v3_direct_20_omat` | ORB-v3 direct, 20-layer omat |
+| `orb_v3_direct_inf_omat` | ORB-v3 direct, inf omat |
+| `orb_v3_conservative_20_omat` | ORB-v3 conservative, 20-layer omat |
+| `orb_v3_conservative_inf_omat` | ORB-v3 conservative, inf omat |
+| `orb_v3_direct_20_mpa` | ORB-v3 direct, 20-layer mpa |
+| `orb_v3_direct_inf_mpa` | ORB-v3 direct, inf mpa |
+| `orb_v3_conservative_20_mpa` | ORB-v3 conservative, 20-layer mpa |
+| `orb_v3_conservative_inf_mpa` | ORB-v3 conservative, inf mpa |
+
+> **Note:** D3 dispersion correction can be enabled for any ORB model by setting
+> `d3_correction: true`.
+
+These model names are also available programmatically as
+`gpuma.AVAILABLE_FAIRCHEM_MODELS` and `gpuma.AVAILABLE_ORB_MODELS`.
 
 See the `examples/` folder for:
 - Simple single optimization (`example_single_optimization.py`)

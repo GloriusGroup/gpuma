@@ -65,11 +65,11 @@ def test_load_calculator_fairchem(mock_hf_token):
         mock_get_unit.return_value = MagicMock()
         mock_calc_cls.return_value = MagicMock()
 
-        calc = load_calculator(config)
+        result = load_calculator(config)
 
         mock_get_unit.assert_called()
         mock_calc_cls.assert_called()
-        assert calc is mock_calc_cls.return_value
+        assert result is mock_calc_cls.return_value
 
 
 def test_load_calculator_fairchem_from_path(mock_hf_token, tmp_path):
@@ -79,7 +79,7 @@ def test_load_calculator_fairchem_from_path(mock_hf_token, tmp_path):
     config = Config({"optimization": {"model_path": str(model_file)}})
 
     try:
-        import fairchem.core as _
+        import fairchem.core as _  # noqa: F401
     except ImportError:
         pytest.skip("fairchem.core not installed")
 
@@ -89,7 +89,7 @@ def test_load_calculator_fairchem_from_path(mock_hf_token, tmp_path):
         mock_load_unit.return_value = MagicMock()
         mock_calc_cls.return_value = MagicMock()
 
-        calc = load_calculator(config)
+        load_calculator(config)
 
         mock_load_unit.assert_called_with(path=model_file, device=ANY)
         mock_calc_cls.assert_called()
@@ -106,10 +106,10 @@ def test_load_torchsim_model_fairchem(mock_hf_token):
     with patch("torch_sim.models.fairchem.FairChemModel") as mock_model_cls:
         mock_model_cls.return_value = MagicMock()
 
-        model = load_torchsim_model(config)
+        result = load_torchsim_model(config)
 
         mock_model_cls.assert_called()
-        assert model is mock_model_cls.return_value
+        assert result is mock_model_cls.return_value
 
 
 def test_load_torchsim_model_fairchem_from_path(mock_hf_token, tmp_path):
@@ -119,14 +119,14 @@ def test_load_torchsim_model_fairchem_from_path(mock_hf_token, tmp_path):
     config = Config({"optimization": {"model_path": str(model_file)}})
 
     try:
-        import torch_sim.models.fairchem as _
+        import torch_sim.models.fairchem as _  # noqa: F401
     except ImportError:
         pytest.skip("torch_sim not installed")
 
     with patch("torch_sim.models.fairchem.FairChemModel") as mock_model_cls:
         mock_model_cls.return_value = MagicMock()
 
-        model = load_torchsim_model(config)
+        load_torchsim_model(config)
 
         call_kwargs = mock_model_cls.call_args.kwargs
         assert call_kwargs["model"] == model_file
@@ -149,13 +149,12 @@ def test_load_calculator_orb():
     mock_adapter = MagicMock()
     mock_calc = MagicMock()
 
-    with patch("gpuma.models._load_orb_pretrained", return_value=(mock_orbff, mock_adapter, "cpu")), \
-         patch("gpuma.models.ORBCalculator", create=True, return_value=mock_calc) as mock_cls:
-
-        # Patch the import inside the function
-        import gpuma.models as _m
-        with patch.object(_m, "_load_orb_calculator", wraps=None) as _:
-            pass  # just verifying the dispatch path works
+    with (
+        patch("gpuma.models._load_orb_pretrained", return_value=(mock_orbff, mock_adapter, "cpu")),
+        patch("gpuma.models.ORBCalculator", create=True, return_value=mock_calc),
+    ):
+        # Verify the dispatch path works via the public API below
+        pass
 
     # Simpler: test through dispatch mock
     with patch("gpuma.models._load_orb_calculator", return_value=mock_calc) as mock_fn:
@@ -173,8 +172,10 @@ def test_load_calculator_orb_invalid_name():
         }
     })
 
-    # _load_orb_pretrained will call getattr(pretrained, "nonexistent_model") -> None -> ValueError
-    with patch("gpuma.models._load_orb_pretrained", side_effect=ValueError("Unknown ORB model name")):
+    with patch(
+        "gpuma.models._load_orb_pretrained",
+        side_effect=ValueError("Unknown ORB model name"),
+    ):
         with pytest.raises(ValueError, match="Unknown ORB model name"):
             load_calculator(config)
 
@@ -233,10 +234,15 @@ def test_load_torchsim_model_orb_missing_package():
 
 
 def test_model_cache_creation_failure(mock_hf_token, caplog):
-    config = Config({"optimization": {"model_cache_dir": "/invalid/path/cache", "model_name": "uma-s-1p1"}})
+    config = Config({
+        "optimization": {
+            "model_cache_dir": "/invalid/path/cache",
+            "model_name": "uma-s-1p1",
+        }
+    })
 
     try:
-        import fairchem.core as _
+        import fairchem.core as _  # noqa: F401
     except ImportError:
         pytest.skip("fairchem.core not installed")
 
@@ -252,10 +258,15 @@ def test_model_cache_creation_failure(mock_hf_token, caplog):
 
 
 def test_model_path_not_exists(mock_hf_token):
-    config = Config({"optimization": {"model_path": "/non/existent/path", "model_name": "fallback"}})
+    config = Config({
+        "optimization": {
+            "model_path": "/non/existent/path",
+            "model_name": "fallback",
+        }
+    })
 
     try:
-        import fairchem.core as _
+        import fairchem.core as _  # noqa: F401
     except ImportError:
         pytest.skip("fairchem.core not installed")
 
@@ -324,9 +335,52 @@ def test_load_torchsim_dispatches_fairchem(mock_hf_token):
 
 def test_load_torchsim_dispatches_orb(mock_hf_token):
     """Verify load_torchsim_model calls the ORB backend."""
-    config = Config({"optimization": {"model_type": "orb-v3", "model_name": "orb_v3_direct_omol"}})
+    config = Config({
+        "optimization": {"model_type": "orb-v3", "model_name": "orb_v3_direct_omol"}
+    })
 
     with patch("gpuma.models._load_orb_torchsim") as mock_orb:
         mock_orb.return_value = MagicMock()
         load_torchsim_model(config)
         mock_orb.assert_called_once_with(config)
+
+
+# ---------------------------------------------------------------------------
+# Model registry validation tests
+# ---------------------------------------------------------------------------
+
+
+def test_fairchem_model_names_are_loadable(mock_hf_token):
+    """Verify every AVAILABLE_FAIRCHEM_MODELS name is accepted by the backend."""
+    from gpuma.models import AVAILABLE_FAIRCHEM_MODELS
+
+    try:
+        from fairchem.core import pretrained_mlip  # noqa: F401
+    except ImportError:
+        pytest.skip("fairchem.core not installed")
+
+    from fairchem.core.calculate.pretrained_mlip import available_models
+
+    for name in AVAILABLE_FAIRCHEM_MODELS:
+        assert name in available_models, (
+            f"Fairchem model {name!r} not found in pretrained_mlip.available_models"
+        )
+
+
+def test_orb_model_names_are_loadable():
+    """Verify every AVAILABLE_ORB_MODELS name resolves to a loader function."""
+    from gpuma.models import AVAILABLE_ORB_MODELS
+
+    try:
+        from orb_models.forcefield import pretrained  # noqa: F401
+    except ImportError:
+        pytest.skip("orb-models not installed")
+
+    for name in AVAILABLE_ORB_MODELS:
+        loader = getattr(pretrained, name, None)
+        assert loader is not None, (
+            f"ORB model {name!r} has no loader in orb_models.forcefield.pretrained"
+        )
+        assert callable(loader), (
+            f"ORB model {name!r} loader is not callable"
+        )
