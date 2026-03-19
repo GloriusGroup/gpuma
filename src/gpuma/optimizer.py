@@ -387,12 +387,9 @@ def _optimize_batch(
     memory_scaling_factor = float(
         getattr(config.technical, "memory_scaling_factor", 1.6)
     )
-    # Use model's own recommendation unless the user explicitly overrides
-    cfg_scales_with = config.technical.get("memory_scales_with", "auto")
-    if cfg_scales_with == "auto":
-        memory_scales_with = getattr(model, "memory_scales_with", "n_atoms_x_density")
-    else:
-        memory_scales_with = str(cfg_scales_with).strip().lower()
+    # Use the model's own recommendation for memory scaling metric
+    # (Fairchem → "n_atoms", ORB → "n_atoms_x_density")
+    memory_scales_with = getattr(model, "memory_scales_with", "n_atoms_x_density")
     max_atoms_to_try = int(
         getattr(config.technical, "max_atoms_to_try", 100_000)
     )

@@ -53,8 +53,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "device": default_device,
         "max_memory_padding": 0.95,
         "memory_scaling_factor": 1.6,
-        "memory_scales_with": "auto",
-        "max_atoms_to_try": 10_000,
+        "max_atoms_to_try": 100_000,
         "logging_level": "INFO",
     },
 }
