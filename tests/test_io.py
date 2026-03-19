@@ -8,6 +8,7 @@ from gpuma.io_handler import (
     read_multi_xyz,
     read_xyz,
     read_xyz_directory,
+    save_as_single_xyz_files,
     save_multi_xyz,
     save_xyz_file,
     smiles_to_ensemble,
@@ -143,6 +144,40 @@ def test_smiles_to_ensemble():
     else:
         # Our mock returns 5 atoms
         assert structs[0].n_atoms == 5
+
+
+def test_save_as_single_xyz_files(tmp_path, sample_structure):
+    out_dir = tmp_path / "single_files"
+    s1 = sample_structure
+    s2 = Structure(
+        symbols=["O", "H", "H"],
+        coordinates=[(0, 0, 0), (0.757, 0.586, 0), (-0.757, 0.586, 0)],
+        energy=-10.0,
+        charge=0,
+        multiplicity=1,
+        comment="Water",
+    )
+    save_as_single_xyz_files([s1, s2], str(out_dir), comments=["Methane", "Water"])
+
+    files = sorted(out_dir.iterdir())
+    assert len(files) == 2
+    assert files[0].name == "structure_1.xyz"
+    assert files[1].name == "structure_2.xyz"
+
+    content1 = files[0].read_text()
+    assert "5" in content1.split("\n")[0]
+    assert "Methane" in content1
+
+    content2 = files[1].read_text()
+    assert "3" in content2.split("\n")[0]
+    assert "Water" in content2
+
+
+def test_save_as_single_xyz_files_creates_dir(tmp_path, sample_structure):
+    out_dir = tmp_path / "new" / "nested" / "dir"
+    save_as_single_xyz_files([sample_structure], str(out_dir))
+    assert out_dir.exists()
+    assert (out_dir / "structure_1.xyz").exists()
 
 
 def test_file_exists(tmp_path):

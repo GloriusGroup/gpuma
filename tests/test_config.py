@@ -198,6 +198,7 @@ def test_conformer_generation_to_dict():
 def test_technical_defaults():
     cfg = Config()
     assert cfg.technical.max_memory_padding == 0.95
+    assert cfg.technical.memory_scaling_factor == 1.6
     assert cfg.technical.logging_level == "INFO"
     # device is dynamic (cuda or cpu), just check it's set
     assert cfg.technical.device in ("cuda", "cpu")
@@ -213,4 +214,5 @@ def test_technical_to_dict():
     cfg = Config()
     d = cfg.to_dict()
     assert d["technical"]["max_memory_padding"] == 0.95
+    assert d["technical"]["memory_scaling_factor"] == 1.6
     assert d["technical"]["logging_level"] == "INFO"

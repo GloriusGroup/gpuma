@@ -27,11 +27,12 @@ from .config import (
     resolve_model_type,
     save_config_to_file,
 )
-from .decorators import time_it
+from .decorators import time_it, timed_block
 from .io_handler import (
     read_multi_xyz,
     read_xyz,
     read_xyz_directory,
+    save_as_single_xyz_files,
     save_multi_xyz,
     save_xyz_file,
     smiles_to_ensemble,
@@ -57,6 +58,7 @@ __all__ = [
     "smiles_to_ensemble",
     "save_xyz_file",
     "save_multi_xyz",
+    "save_as_single_xyz_files",
     # Optimization functions
     "optimize_single_structure",
     "optimize_structure_batch",
@@ -79,4 +81,5 @@ __all__ = [
     "resolve_model_type",
     # Decorators
     "time_it",
+    "timed_block",
 ]

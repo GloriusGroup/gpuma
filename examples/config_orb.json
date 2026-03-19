@@ -39,8 +39,9 @@
 
   "technical": {
 
-    "device": "cuda:3",
+    "device": "cuda:0",
     "max_memory_padding": 0.95,
+    "memory_scaling_factor": 1.6,
 
     "logging_level": "INFO"
 

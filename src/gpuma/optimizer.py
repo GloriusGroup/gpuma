@@ -21,7 +21,7 @@ from ase import Atoms
 from ase.optimize import BFGS
 
 from .config import Config, load_config_from_file, resolve_model_type
-from .decorators import time_it
+from .decorators import timed_block
 from .models import _parse_device_string, load_calculator, load_torchsim_model
 from .structure import Structure
 
@@ -172,7 +172,6 @@ def _resolve_batch_convergence(config: Config):
 # ---------------------------------------------------------------------------
 
 
-@time_it
 def optimize_single_structure(
     structure: Structure,
     config: Config | None = None,
@@ -281,20 +280,23 @@ def optimize_structure_batch(
 
     logger.info("Optimization device: %s", "CPU" if on_cpu else "GPU")
 
-    if mode == "sequential" or on_cpu:
-        if not on_cpu and mode == "batch":
-            logger.warning(
-                "Batch optimization mode requires GPU, falling back to sequential mode on CPU.",
+    with timed_block("Total optimization") as tb:
+        if mode == "sequential" or on_cpu:
+            if not on_cpu and mode == "batch":
+                logger.warning(
+                    "Batch optimization mode requires GPU, falling back to sequential mode on CPU.",
+                )
+            results = _optimize_sequential(structures, config)
+        elif mode == "batch":
+            results = _optimize_batch(structures, config)
+        else:
+            raise ValueError(
+                f"Unknown optimization mode: {mode!r}. Use 'sequential' or 'batch' "
+                "(batch requires GPU)."
             )
-        return _optimize_sequential(structures, config)
 
-    if mode == "batch":
-        return _optimize_batch(structures, config)
-
-    raise ValueError(
-        f"Unknown optimization mode: {mode!r}. Use 'sequential' or 'batch' "
-        "(batch requires GPU)."
-    )
+    _log_optimization_summary(structures, results, tb.elapsed, mode, config)
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -302,7 +304,6 @@ def optimize_structure_batch(
 # ---------------------------------------------------------------------------
 
 
-@time_it
 def _optimize_sequential(
     structures: list[Structure],
     config: Config,
@@ -328,7 +329,6 @@ def _optimize_sequential(
     return results
 
 
-@time_it
 def _optimize_batch(
     structures: list[Structure],
     config: Config,
@@ -374,24 +374,43 @@ def _optimize_batch(
     max_memory_padding = float(
         getattr(config.technical, "max_memory_padding", 0.95)
     )
+    memory_scaling_factor = float(
+        getattr(config.technical, "memory_scaling_factor", 1.6)
+    )
     steps_between_swaps = int(
         getattr(config.optimization, "steps_between_swaps", 3)
     )
 
-    batcher = InFlightAutoBatcher(
-        model,
-        memory_scales_with="n_atoms",
-        max_memory_padding=max_memory_padding,
-        max_atoms_to_try=min(batched_state.n_atoms, 500_000),
+    with timed_block("Autobatcher setup") as t_batcher:
+        batcher = InFlightAutoBatcher(
+            model,
+            memory_scales_with="n_atoms",
+            memory_scaling_factor=memory_scaling_factor,
+            max_memory_padding=max_memory_padding,
+            max_atoms_to_try=min(batched_state.n_atoms, 500_000),
+        )
+    logger.debug(
+        "Autobatcher params: max_memory_padding=%.2f, memory_scaling_factor=%.2f, "
+        "max_atoms=%d, steps_between_swaps=%d",
+        max_memory_padding,
+        memory_scaling_factor,
+        min(batched_state.n_atoms, 500_000),
+        steps_between_swaps,
     )
 
-    final_state = torch_sim.optimize(
-        system=batched_state,
-        model=model,
-        optimizer=optimizer,
-        convergence_fn=convergence_fn,
-        autobatcher=batcher,
-        steps_between_swaps=steps_between_swaps,
+    with timed_block("Batch optimization") as t_opt:
+        final_state = torch_sim.optimize(
+            system=batched_state,
+            model=model,
+            optimizer=optimizer,
+            convergence_fn=convergence_fn,
+            autobatcher=batcher,
+            steps_between_swaps=steps_between_swaps,
+        )
+    logger.debug(
+        "Timing breakdown — autobatcher: %.2f sec, optimization: %.2f sec",
+        t_batcher.elapsed,
+        t_opt.elapsed,
     )
 
     # Extract results
@@ -410,3 +429,69 @@ def _optimize_batch(
         )
         results.append(struct)
     return results
+
+
+# ---------------------------------------------------------------------------
+# Optimization summary
+# ---------------------------------------------------------------------------
+
+
+def _log_optimization_summary(
+    input_structures: list[Structure],
+    results: list[Structure],
+    total_time: float,
+    mode: str,
+    config: Config,
+) -> None:
+    """Log a summary of the optimization run."""
+    n_input = len(input_structures)
+    n_output = len(results)
+    energies = [s.energy for s in results if s.energy is not None]
+    atom_counts = [s.n_atoms for s in results]
+
+    model_name = getattr(config.model, "model_name", "unknown")
+    model_type = resolve_model_type(config)
+    device = str(config.technical.device)
+
+    lines = [
+        "",
+        "=" * 60,
+        "  GPUMA Optimization Summary",
+        "=" * 60,
+        f"  Model:               {model_type} / {model_name}",
+        f"  Device:              {device}",
+        f"  Mode:                {mode}",
+        "-" * 60,
+        f"  Structures input:    {n_input}",
+        f"  Structures output:   {n_output}",
+    ]
+    if n_input > 0:
+        lines.append(
+            f"  Success rate:        {n_output}/{n_input}"
+            f" ({100 * n_output / n_input:.1f}%)"
+        )
+    lines.append(f"  Total time:          {total_time:.2f} sec")
+    if n_output > 0:
+        lines.append(f"  Avg time/structure:  {total_time / n_output:.3f} sec")
+        lines.append(f"  Throughput:          {n_output / total_time:.1f} structures/sec")
+    if atom_counts:
+        lines.append(
+            f"  Atoms per structure: {min(atom_counts)}-{max(atom_counts)}"
+            f" (avg {sum(atom_counts) / len(atom_counts):.1f})"
+        )
+        total_atoms = sum(atom_counts)
+        lines.append(f"  Total atoms:         {total_atoms}")
+        if total_time > 0:
+            lines.append(f"  Atom throughput:     {total_atoms / total_time:.0f} atoms/sec")
+    if energies:
+        mean_e = sum(energies) / len(energies)
+        lines.extend([
+            "-" * 60,
+            f"  Energy min:          {min(energies):.4f} eV",
+            f"  Energy max:          {max(energies):.4f} eV",
+            f"  Energy mean:         {mean_e:.4f} eV",
+            f"  Energy spread:       {max(energies) - min(energies):.4f} eV",
+        ])
+    lines.extend(["=" * 60, ""])
+
+    logger.info("\n".join(lines))

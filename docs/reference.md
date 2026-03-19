@@ -104,6 +104,12 @@ Functions for reading, writing, and converting molecular structures.
       show_root_full_path: false
       heading_level: 3
 
+::: gpuma.io_handler.save_as_single_xyz_files
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
+
 ## Low-Level Optimization
 Lower-level functions used by the high-level API.
 
