@@ -2,7 +2,7 @@
 """Benchmark: Large-scale batch optimization across models.
 
 Compares Fairchem UMA (small v1.1, small v1.2, medium) and ORB-v3
-(direct and conservative) on a ~4000-structure molecular dataset.
+(direct and conservative) on a ~4000-structure molecucllar dataset.
 Results are saved as a CSV file.
 """
 
