@@ -9,8 +9,6 @@ ensembles of conformers.
 
 from __future__ import annotations
 
-from typing import cast
-
 from .config import Config, load_config_from_file
 from .io_handler import (
     file_exists,
@@ -55,8 +53,7 @@ def optimize_single_smiles(
     if config is None:
         config = load_config_from_file()
 
-    multiplicity = getattr(config.optimization, "multiplicity", 1)
-    structure = smiles_to_xyz(smiles, multiplicity=multiplicity)
+    structure = smiles_to_xyz(smiles, multiplicity=config.optimization.multiplicity)
 
     if not isinstance(structure, Structure):
         raise ValueError("smiles_to_xyz did not return a Structure")
@@ -100,9 +97,11 @@ def optimize_single_xyz_file(
     if config is None:
         config = load_config_from_file()
 
-    eff_charge = int(getattr(config.optimization, "charge", 0))
-    eff_mult = int(getattr(config.optimization, "multiplicity", 1))
-    structure = read_xyz(input_file, charge=eff_charge, multiplicity=eff_mult)
+    structure = read_xyz(
+        input_file,
+        charge=int(config.optimization.charge),
+        multiplicity=int(config.optimization.multiplicity),
+    )
     if not isinstance(structure, Structure):
         raise ValueError("read_xyz did not return a Structure")
     structure.comment = f"Optimized from: {input_file}"
@@ -144,9 +143,10 @@ def optimize_ensemble_smiles(
     """
     if config is None:
         config = load_config_from_file()
-    multiplicity = int(getattr(config.optimization, "multiplicity", 1))
-    num_conformers = int(getattr(config.optimization, "max_num_conformers", 10))
-    conformers = smiles_to_ensemble(smiles, num_conformers, multiplicity)
+    multiplicity = int(config.optimization.multiplicity)
+    num_conformers = int(config.conformer_generation.max_num_conformers)
+    seed = int(config.conformer_generation.conformer_seed)
+    conformers = smiles_to_ensemble(smiles, num_conformers, multiplicity, seed=seed)
     if not isinstance(conformers, list) or (
         len(conformers) and not isinstance(conformers[0], Structure)
     ):
@@ -162,6 +162,7 @@ def optimize_ensemble_smiles(
         save_multi_xyz(results, output_file, comments)
 
     return results
+
 
 def optimize_batch_multi_xyz_file(
     input_file: str,
@@ -197,18 +198,11 @@ def optimize_batch_multi_xyz_file(
     if config is None:
         config = load_config_from_file()
 
-    eff_charge = int(getattr(config.optimization, "charge", 0))
-    eff_mult = int(getattr(config.optimization, "multiplicity", 1))
-
-    structures = cast(
-        list[Structure],
-        read_multi_xyz(input_file, charge=eff_charge, multiplicity=eff_mult),
+    structures = read_multi_xyz(
+        input_file,
+        charge=int(config.optimization.charge),
+        multiplicity=int(config.optimization.multiplicity),
     )
-    if not isinstance(structures, list) or (
-        len(structures) and not isinstance(structures[0], Structure)
-    ):
-        raise ValueError("read_multi_xyz did not return a list of Structure")
-
     results = optimize_structure_batch(structures, config)
 
     if output_file:
@@ -219,6 +213,7 @@ def optimize_batch_multi_xyz_file(
 
     return results
 
+
 def optimize_batch_xyz_directory(
     input_directory: str,
     output_file: str,
@@ -228,7 +223,7 @@ def optimize_batch_xyz_directory(
 
     This function reads multiple molecular structures from XYZ files in the specified input
     directory, optimizes each structure using the provided optimization pipeline,
-    and writes the optimized structures to XYZ files in the specified output directory.
+    and writes the optimized structures to a multi-structure XYZ output file.
 
     Args:
         input_directory (str): Path to an input directory containing XYZ files.
@@ -248,18 +243,11 @@ def optimize_batch_xyz_directory(
     if config is None:
         config = load_config_from_file()
 
-    eff_charge = int(getattr(config.optimization, "charge", 0))
-    eff_mult = int(getattr(config.optimization, "multiplicity", 1))
-
-    structures = cast(
-        list[Structure],
-        read_xyz_directory(
-            input_directory,
-            charge=eff_charge,
-            multiplicity=eff_mult,
-        ),
+    structures = read_xyz_directory(
+        input_directory,
+        charge=int(config.optimization.charge),
+        multiplicity=int(config.optimization.multiplicity),
     )
-
     results = optimize_structure_batch(structures, config)
 
     if output_file:
@@ -270,6 +258,7 @@ def optimize_batch_xyz_directory(
         save_multi_xyz(results, output_file, comments)
 
     return results
+
 
 __all__ = [
     "optimize_single_smiles",

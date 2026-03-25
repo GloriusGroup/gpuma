@@ -1,13 +1,16 @@
-"""GPUMA: A minimal package for molecular geometry optimization using Fairchem's UMA models.
+"""GPUMA: Molecular geometry optimization using Fairchem UMA and ORB-v3 models.
 
-This package provides essential tools for:
+This package provides tools for:
+
 - Single molecule optimization from SMILES strings or XYZ files
 - Batch optimization of multiple structures (e.g., conformer ensembles)
 - Format conversion between SMILES and XYZ coordinates
-- Configurable optimization parameters through JSON/YAML configuration files
+- Configurable optimization via JSON/YAML configuration files
 
-The package is designed to be simple and focused, providing only the functionality
-that is actually implemented and tested.
+Two model backends are supported:
+
+- **Fairchem UMA** (default): Universal machine-learning interatomic potentials.
+- **ORB-v3**: Uses the ``orb-models`` package (included in core dependencies).
 """
 
 from .api import (
@@ -17,18 +20,30 @@ from .api import (
     optimize_single_smiles,
     optimize_single_xyz_file,
 )
-from .config import Config, default_config, load_config_from_file, save_config_to_file
-from .decorators import time_it
+from .config import (
+    Config,
+    default_config,
+    load_config_from_file,
+    resolve_model_type,
+    save_config_to_file,
+)
+from .decorators import time_it, timed_block
 from .io_handler import (
     read_multi_xyz,
     read_xyz,
     read_xyz_directory,
+    save_as_single_xyz_files,
     save_multi_xyz,
     save_xyz_file,
     smiles_to_ensemble,
     smiles_to_xyz,
 )
-from .models import load_model_fairchem, load_model_torchsim
+from .models import (
+    AVAILABLE_FAIRCHEM_MODELS,
+    AVAILABLE_ORB_MODELS,
+    load_calculator,
+    load_torchsim_model,
+)
 from .optimizer import optimize_single_structure, optimize_structure_batch
 from .structure import Structure
 
@@ -43,23 +58,28 @@ __all__ = [
     "smiles_to_ensemble",
     "save_xyz_file",
     "save_multi_xyz",
+    "save_as_single_xyz_files",
     # Optimization functions
     "optimize_single_structure",
     "optimize_structure_batch",
-    # Convenience functions (re-exported from ``api``)
+    # High-level API
     "optimize_single_smiles",
     "optimize_single_xyz_file",
     "optimize_ensemble_smiles",
     "optimize_batch_multi_xyz_file",
     "optimize_batch_xyz_directory",
-    # Model functions
-    "load_model_torchsim",
-    "load_model_fairchem",
+    # Model loading
+    "load_calculator",
+    "load_torchsim_model",
+    "AVAILABLE_FAIRCHEM_MODELS",
+    "AVAILABLE_ORB_MODELS",
     # Configuration
     "Config",
     "default_config",
     "load_config_from_file",
     "save_config_to_file",
+    "resolve_model_type",
     # Decorators
     "time_it",
+    "timed_block",
 ]

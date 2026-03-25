@@ -163,27 +163,36 @@ def read_multi_xyz(file_path: str, charge: int = 0, multiplicity: int = 1) -> li
                 coordinates: list[tuple[float, float, float]] = []
 
                 valid = True
-                for _ in range(num_atoms):
+                for atom_idx in range(num_atoms):
                     try:
                         atom_line = next(line_iterator)
                     except StopIteration:
+                        logger.warning(
+                            "Structure '%s': unexpected end of file at atom %d/%d, skipping",
+                            comment, atom_idx + 1, num_atoms,
+                        )
                         valid = False
                         break
 
-                    if not valid:
-                        continue
-
                     parts = atom_line.split()
                     if len(parts) < 4:
+                        logger.warning(
+                            "Structure '%s': malformed atom line %d, skipping structure",
+                            comment, atom_idx + 1,
+                        )
                         valid = False
-                        continue
+                        break
 
                     symbol = parts[0]
                     try:
                         x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
                     except ValueError:
+                        logger.warning(
+                            "Structure '%s': invalid coordinates at atom %d, skipping structure",
+                            comment, atom_idx + 1,
+                        )
                         valid = False
-                        continue
+                        break
                     symbols.append(symbol)
                     coordinates.append((x, y, z))
 
@@ -307,6 +316,7 @@ def smiles_to_ensemble(
     smiles_string: str,
     max_num_confs: int,
     multiplicity: int | None = None,
+    seed: int | None = None,
 ) -> list[Structure]:
     """Generate conformer ensemble from SMILES.
 
@@ -318,6 +328,8 @@ def smiles_to_ensemble(
         Maximum number of conformers to generate.
     multiplicity:
         Optional spin multiplicity to set on the structures (default: ``None``).
+    seed:
+        Optional random seed for reproducible conformer generation.
 
     Returns
     -------
@@ -329,12 +341,25 @@ def smiles_to_ensemble(
         raise ValueError("SMILES string cannot be empty or None")
 
     mult = int(multiplicity) if multiplicity is not None else 1
-    structs = _smiles_to_ensemble_util(smiles_string.strip(), max_num_confs, multiplicity=mult)
+    structs = _smiles_to_ensemble_util(
+        smiles_string.strip(), max_num_confs, multiplicity=mult, seed=seed,
+    )
     return structs
 
 
 def save_xyz_file(structure: Structure, file_path: str) -> None:
-    """Save a single Structure to XYZ, including energy and electronic state."""
+    """Save a single :class:`Structure` to an XYZ file.
+
+    The comment line includes the energy (if set), charge, and multiplicity.
+
+    Parameters
+    ----------
+    structure:
+        Structure to write.
+    file_path:
+        Destination file path.
+
+    """
     lines: list[str] = [str(structure.n_atoms)]
     # include existing comment and ensure energy/charge/multiplicity are visible
     base_comment = structure.comment or ""
@@ -355,7 +380,22 @@ def save_xyz_file(structure: Structure, file_path: str) -> None:
 def save_multi_xyz(
     structures: list[Structure], file_path: str, comments: list[str] | None = None
 ) -> None:
-    """Save multiple structures to a multi-XYZ file, including energy and state."""
+    """Save multiple structures to a single multi-structure XYZ file.
+
+    Each structure block includes the energy (if set), charge, and
+    multiplicity in the comment line.
+
+    Parameters
+    ----------
+    structures:
+        List of structures to write.
+    file_path:
+        Destination file path.
+    comments:
+        Optional per-structure comment strings. Falls back to each
+        structure's own comment if not provided.
+
+    """
     lines: list[str] = []
     for idx, struct in enumerate(structures):
         lines.append(str(struct.n_atoms))
@@ -376,6 +416,40 @@ def save_multi_xyz(
     with open(file_path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines))
         fh.write("\n")
+
+def save_as_single_xyz_files(
+    structures: list[Structure], output_dir: str, comments: list[str] | None = None
+) -> None:
+    """Save each structure to its own XYZ file in a directory.
+
+    Files are zero-padded to sort naturally, e.g. ``structure_01.xyz`` for
+    up to 99 structures, ``structure_0001.xyz`` for up to 9999, etc.
+
+    Parameters
+    ----------
+    structures:
+        List of structures to save.
+    output_dir:
+        Directory where files will be written. Created if it does not exist.
+    comments:
+        Optional per-structure comment strings.
+
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    width = len(str(len(structures)))
+    for idx, struct in enumerate(structures):
+        if comments and idx < len(comments):
+            struct = Structure(
+                symbols=struct.symbols,
+                coordinates=struct.coordinates,
+                energy=struct.energy,
+                charge=struct.charge,
+                multiplicity=struct.multiplicity,
+                comment=comments[idx],
+            )
+        file_path = os.path.join(output_dir, f"structure_{idx + 1:0{width}d}.xyz")
+        save_xyz_file(struct, file_path)
+
 
 def file_exists(file_path: str) -> bool:
     """Check if a file exists at the given path.

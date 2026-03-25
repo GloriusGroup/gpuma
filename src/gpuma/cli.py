@@ -1,8 +1,8 @@
 """Command Line Interface for GPUMA.
 
 This module provides a command-line interface for molecular geometry
-optimization using Fairchem UMA models. The CLI supports three main
-optimization modes:
+optimization using Fairchem UMA or ORB-v3 models.  The CLI supports
+three main optimization modes:
 
 1. Single Structure Optimization: Optimize individual molecular structures.
 2. Ensemble Optimization (SMILES): Optimize multiple conformers generated
@@ -10,8 +10,8 @@ optimization modes:
 3. Batch Optimization (Files): Optimize multiple structures from multi-XYZ
    files or directories.
 
-The interface is intentionally similar to the original one but branded and
-implemented purely for GPUMA.
+The model backend is selected via ``--model-type`` or the ``model_type``
+configuration key (``"fairchem"``/``"uma"`` or ``"orb"``/``"orb-v3"``).
 """
 
 import argparse
@@ -77,7 +77,7 @@ def setup_parser() -> argparse.ArgumentParser:
 
     """
     parser = argparse.ArgumentParser(
-        description=("GPUMA - Optimize molecular structures using Fairchem UMA models"),
+        description=("GPUMA - Optimize molecular structures using Fairchem UMA or ORB-v3 models"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 OPTIMIZATION MODES:
@@ -343,26 +343,34 @@ UTILITY COMMANDS:
             "Accepted values: 'cpu', 'cuda', 'cuda:N' (e.g. 'cuda:0')."
         ),
     )
+    parser.add_argument(
+        "--model-type",
+        type=str,
+        choices=["fairchem", "uma", "orb", "orb-v3"],
+        help=(
+            "Override model backend from config. "
+            "'fairchem'/'uma' for Fairchem UMA models, 'orb'/'orb-v3' for ORB-v3 models."
+        ),
+    )
 
     return parser
+
+
+def _cli_override(args, attr: str, config_val: int) -> int:
+    """Return CLI arg if provided, otherwise the config value."""
+    cli_val = getattr(args, attr, None)
+    return int(cli_val) if cli_val is not None else int(config_val)
 
 
 def cmd_optimize(args, config: Config) -> None:
     """Handle the single-structure optimization command.
 
     This command optimizes a single molecular structure from either a SMILES
-    string or an XYZ file. The optimization uses the configured Fairchem UMA
-    model.
+    string or an XYZ file using the configured model backend.
     """
     try:
         if args.smiles:
-            # charge is derived from SMILES; multiplicity can be overridden via config or CLI
-            eff_mult = int(
-                args.multiplicity
-                if hasattr(args, "multiplicity") and args.multiplicity is not None
-                else getattr(config.optimization, "multiplicity", 1)
-            )
-            # write back to config so optimize_single_smiles/smiles_to_xyz see it
+            eff_mult = _cli_override(args, "multiplicity", config.optimization.multiplicity)
             config.optimization.multiplicity = eff_mult
             logger.info(
                 "Converting SMILES '%s' to 3D coordinates and optimizing (multiplicity=%d)...",
@@ -375,16 +383,8 @@ def cmd_optimize(args, config: Config) -> None:
                 config=config,
             )
         else:
-            eff_charge = int(
-                args.charge
-                if hasattr(args, "charge") and args.charge is not None
-                else getattr(config.optimization, "charge", 0)
-            )
-            eff_mult = int(
-                args.multiplicity
-                if hasattr(args, "multiplicity") and args.multiplicity is not None
-                else getattr(config.optimization, "multiplicity", 1)
-            )
+            eff_charge = _cli_override(args, "charge", config.optimization.charge)
+            eff_mult = _cli_override(args, "multiplicity", config.optimization.multiplicity)
             logger.info(
                 "Reading and optimizing structure from %s (charge=%d, multiplicity=%d)",
                 args.xyz,
@@ -426,9 +426,9 @@ def cmd_ensemble(args, config: Config) -> None:
                 "to neutral singlet (charge=0, multiplicity=1).",
             )
 
-        num_conf = args.conformers or config.optimization.max_num_conformers
+        num_conf = args.conformers or config.conformer_generation.max_num_conformers
         logger.info("Generating %d conformers for SMILES: %s", num_conf, args.smiles)
-        config.optimization.max_num_conformers = num_conf
+        config.conformer_generation.max_num_conformers = num_conf
 
         optimized_conformers = optimize_ensemble_smiles(
             smiles=args.smiles,
@@ -454,17 +454,9 @@ def cmd_ensemble(args, config: Config) -> None:
 def cmd_batch(args, config: Config) -> None:
     """Handle batch optimization from files (multi-XYZ or directory)."""
     try:
-        eff_charge = int(
-            args.charge
-            if hasattr(args, "charge") and args.charge is not None
-            else getattr(config.optimization, "charge", 0)
-        )
+        eff_charge = _cli_override(args, "charge", config.optimization.charge)
         config.optimization.charge = eff_charge
-        eff_mult = int(
-            args.multiplicity
-            if hasattr(args, "multiplicity") and args.multiplicity is not None
-            else getattr(config.optimization, "multiplicity", 1)
-        )
+        eff_mult = _cli_override(args, "multiplicity", config.optimization.multiplicity)
         config.optimization.multiplicity = eff_mult
 
         if args.multi_xyz:
@@ -505,11 +497,12 @@ def cmd_batch(args, config: Config) -> None:
         sys.exit(1)
 
 
-def cmd_convert(args, config: Config | None = None) -> None:  # pylint: disable=unused-argument
+def cmd_convert(args, config: Config) -> None:
     """Handle the SMILES to XYZ conversion command.
 
     This command generates a single 3D structure from SMILES without running
-    any optimization.
+    any optimization.  The ``config`` parameter is accepted for interface
+    consistency but is not used.
     """
     try:
         logger.info("Converting SMILES '%s' to XYZ without optimization", args.smiles)
@@ -528,7 +521,7 @@ def cmd_generate(args, config: Config) -> None:  # pylint: disable=unused-argume
     optimization.
     """
     try:
-        num_conf = args.conformers or config.optimization.max_num_conformers
+        num_conf = args.conformers or config.conformer_generation.max_num_conformers
         logger.info(
             "Generating %d conformers for SMILES (no optimization): %s",
             num_conf,
@@ -561,15 +554,21 @@ def cmd_config(args, config: Config) -> None:
 def _apply_global_verbosity_flags(config: Config, verbose: bool, quiet: bool) -> None:
     """Apply global verbosity CLI flags to the configuration in-place."""
     if verbose:
-        config.optimization.logging_level = "DEBUG"
+        config.technical.logging_level = "DEBUG"
     elif quiet:
-        config.optimization.logging_level = "ERROR"
+        config.technical.logging_level = "ERROR"
 
 
 def _apply_device_override(config: Config, device) -> None:
     """Apply a global device override if provided via CLI."""
     if device:
-        config.optimization.device = device
+        config.technical.device = device
+
+
+def _apply_model_type_override(config: Config, model_type) -> None:
+    """Apply a global model-type override if provided via CLI."""
+    if model_type:
+        config.model.model_type = model_type
 
 
 def main(argv=None) -> int:
@@ -594,12 +593,13 @@ def main(argv=None) -> int:
     cfg_path = getattr(args, "config", None) or "config.json"
     config = load_config_from_file(cfg_path)
 
-    # Apply verbosity and device flags
+    # Apply verbosity, device, and model-type flags
     _apply_global_verbosity_flags(config, args.verbose, args.quiet)
     _apply_device_override(config, getattr(args, "device", None))
+    _apply_model_type_override(config, getattr(args, "model_type", None))
 
     # Configure logging
-    logging_level = _level_from_string(config.optimization.logging_level)
+    logging_level = _level_from_string(config.technical.logging_level)
     configure_logging(logging_level)
 
     if not args.command:

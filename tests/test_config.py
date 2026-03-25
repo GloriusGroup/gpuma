@@ -3,14 +3,19 @@ import json
 import pytest
 import yaml
 
-from gpuma.config import Config, get_huggingface_token, load_config_from_file, save_config_to_file
+from gpuma.config import (
+    Config,
+    load_config_from_file,
+    resolve_model_type,
+    save_config_to_file,
+)
 
 
 def test_config_initialization():
     cfg = Config()
     # Check default values
     assert cfg.optimization.charge == 0
-    assert cfg.optimization.model_name == "uma-s-1p1"
+    assert cfg.model.model_name == "uma-s-1p2"
 
 def test_config_override():
     data = {"optimization": {"charge": 1, "new_key": "value"}}
@@ -75,7 +80,7 @@ def test_validate_config():
 
     # Invalid device
     with pytest.raises(ValueError, match="Device must be"):
-        Config({"optimization": {"device": "invalid_device"}})
+        Config({"technical": {"device": "invalid_device"}})
 
 def test_validate_config_convergence():
     # Test invalid convergence criteria
@@ -90,31 +95,30 @@ def test_validate_config_convergence():
 
 def test_validate_config_device_empty():
     with pytest.raises(ValueError, match="Device string in config cannot be empty"):
-        Config({"optimization": {"device": ""}})
+        Config({"technical": {"device": ""}})
 
     with pytest.raises(ValueError, match="Device string in config cannot be empty"):
-        Config({"optimization": {"device": "   "}})
+        Config({"technical": {"device": "   "}})
 
 def test_huggingface_token(tmp_path, monkeypatch):
     # Case 1: Token in config
-    cfg = Config({"optimization": {"huggingface_token": "token_in_config"}})
-    assert cfg.optimization.get_huggingface_token() == "token_in_config"
-    assert get_huggingface_token(cfg) == "token_in_config"
+    cfg = Config({"model": {"huggingface_token": "token_in_config"}})
+    assert cfg.model.get_huggingface_token() == "token_in_config"
 
     # Case 2: Token in file
     token_file = tmp_path / "token.txt"
     token_file.write_text("token_in_file")
-    cfg = Config({"optimization": {"huggingface_token_file": str(token_file)}})
-    assert cfg.optimization.get_huggingface_token() == "token_in_file"
+    cfg = Config({"model": {"huggingface_token_file": str(token_file)}})
+    assert cfg.model.get_huggingface_token() == "token_in_file"
 
     # Case 3: Priority (config > file)
     cfg = Config({
-        "optimization": {
+        "model": {
             "huggingface_token": "priority_token",
             "huggingface_token_file": str(token_file)
         }
     })
-    assert cfg.optimization.get_huggingface_token() == "priority_token"
+    assert cfg.model.get_huggingface_token() == "priority_token"
 
 def test_section_to_dict():
     cfg = Config()
@@ -130,3 +134,85 @@ def test_config_to_dict():
     cfg = Config()
     d = cfg.to_dict()
     assert d["optimization"]["charge"] == 0
+
+
+def test_config_default_model_type():
+    cfg = Config()
+    assert cfg.model.model_type == "fairchem"
+
+
+def test_resolve_model_type_aliases():
+    assert resolve_model_type(Config({"model": {"model_type": "fairchem"}})) == "fairchem"
+    assert resolve_model_type(Config({"model": {"model_type": "uma"}})) == "fairchem"
+    assert resolve_model_type(Config({"model": {"model_type": "orb"}})) == "orb"
+    assert resolve_model_type(Config({"model": {"model_type": "orb-v3"}})) == "orb"
+
+
+def test_resolve_model_type_case_insensitive():
+    assert resolve_model_type(Config({"model": {"model_type": "FAIRCHEM"}})) == "fairchem"
+    assert resolve_model_type(Config({"model": {"model_type": "ORB"}})) == "orb"
+
+
+def test_resolve_model_type_from_dict():
+    assert resolve_model_type({"model": {"model_type": "orb-v3"}}) == "orb"
+    assert resolve_model_type({"model": {"model_type": "uma"}}) == "fairchem"
+    # Missing model_type defaults to fairchem
+    assert resolve_model_type({"model": {}}) == "fairchem"
+
+
+def test_resolve_model_type_invalid():
+    with pytest.raises(ValueError, match="Unknown model_type"):
+        resolve_model_type(Config({"model": {"model_type": "invalid"}}))
+
+
+def test_validate_config_invalid_model_type():
+    with pytest.raises(ValueError, match="Unknown model_type"):
+        Config({"model": {"model_type": "nonexistent"}})
+
+
+# --- conformer_generation section ---
+
+
+def test_conformer_generation_defaults():
+    cfg = Config()
+    assert cfg.conformer_generation.max_num_conformers == 20
+    assert cfg.conformer_generation.conformer_seed == 42
+
+
+def test_conformer_generation_override():
+    cfg = Config({"conformer_generation": {"max_num_conformers": 50, "conformer_seed": 123}})
+    assert cfg.conformer_generation.max_num_conformers == 50
+    assert cfg.conformer_generation.conformer_seed == 123
+
+
+def test_conformer_generation_to_dict():
+    cfg = Config()
+    d = cfg.to_dict()
+    assert d["conformer_generation"]["max_num_conformers"] == 20
+    assert d["conformer_generation"]["conformer_seed"] == 42
+
+
+# --- technical section ---
+
+
+def test_technical_defaults():
+    cfg = Config()
+    assert cfg.technical.max_memory_padding == 0.95
+    assert cfg.technical.memory_scaling_factor == 1.6
+    assert cfg.technical.logging_level == "INFO"
+    # device is dynamic (cuda or cpu), just check it's set
+    assert cfg.technical.device in ("cuda", "cpu")
+
+
+def test_technical_override():
+    cfg = Config({"technical": {"max_memory_padding": 0.5, "logging_level": "DEBUG"}})
+    assert cfg.technical.max_memory_padding == 0.5
+    assert cfg.technical.logging_level == "DEBUG"
+
+
+def test_technical_to_dict():
+    cfg = Config()
+    d = cfg.to_dict()
+    assert d["technical"]["max_memory_padding"] == 0.95
+    assert d["technical"]["memory_scaling_factor"] == 1.6
+    assert d["technical"]["logging_level"] == "INFO"

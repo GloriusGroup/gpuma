@@ -3,7 +3,7 @@
 The CLI is provided via the command `gpuma`. For best results, create a
 config file (JSON or YAML) and reference it in all CLI calls.
 
-**Important:** For the optimatzion of very large ensembles or high-throughput workflows, using
+**Important:** For the optimization of very large ensembles or high-throughput workflows, using
 the batch optimization mode is recommended (set in the config file, see below).
 In this case, make sure to use a multi-XYZ input file or a directory of XYZ files
 and only start one GPUMA process to leverage maximum efficient GPU parallelization
@@ -50,6 +50,34 @@ gpuma optimize --smiles "CCO" --output examples/example_output/ethanol_verbose.x
 gpuma ensemble --smiles "CCO" --conformers 3 --output examples/example_output/ethanol_ensemble_verbose.xyz --config examples/config.json
 ```
 
+### `gpuma smiles` shorthand
+
+The `gpuma smiles` command is a shorthand for single-structure optimization
+directly from a SMILES string (equivalent to `gpuma optimize --smiles`):
+
+```bash
+gpuma smiles --smiles "CCO" --output examples/example_output/ethanol_opt.xyz --config examples/config.json
+```
+
+### Using ORB-v3 models
+
+To use ORB-v3 instead of Fairchem UMA, either set `"model_type": "orb"` in
+your config file (see `examples/config_orb.json`) or override from the CLI:
+
+```bash
+# Single optimization with ORB-v3
+gpuma --model-type orb optimize --smiles "CCO" --output output.xyz --config examples/config_orb.json
+
+# Ensemble with ORB-v3
+gpuma ensemble --smiles "CCO" --conformers 10 --output ensemble.xyz --config examples/config_orb.json
+
+# Batch optimization from a multi-XYZ file with ORB-v3
+gpuma batch --multi-xyz examples/example_input_xyzs/multi_xyz_file.xyz --output batch_orb.xyz --config examples/config_orb.json
+
+# Batch optimization from a directory of XYZ files with ORB-v3
+gpuma batch --xyz-dir examples/example_input_xyzs/multi_xyz_dir/ --output batch_dir_orb.xyz --config examples/config_orb.json
+```
+
 **Note:**
 - If `--config` is not specified, `config.json` in the current directory is loaded by default.
 - Direct CLI flags are supported, but using a config file is preferred for all workflows.
@@ -68,17 +96,25 @@ gpuma ensemble --smiles "CCO" --conformers 3 --output examples/example_output/et
   `Atoms.info = {"charge": charge, "spin": multiplicity}` and are written to
   the XYZ comments as `Charge: ... | Multiplicity: ...`.
 
-You can control the compute device globally in the config or from the CLI with `--device` (which overrides the config).
-Accepted values are `cpu` for CPU-only execution and `cuda` to enable GPU acceleration.
+The config file is organized into four sections: `optimization` (batch
+settings, convergence, charge/multiplicity), `model` (backend, name,
+tokens, D3), `conformer_generation` (conformer count, seed), and
+`technical` (device, memory padding, logging).
+See [Configuration](config.md) for details.
 
-**GPU selection:** Fairchem currently does not support selecting a specific GPU
-via the `device` argument. To target particular GPUs you should set the
-`CUDA_VISIBLE_DEVICES` environment variable before calling `gpuma`, e.g.:
+You can control the compute device globally in the config or from the CLI with `--device` (which overrides the config).
+Accepted values are `cpu`, `cuda` (default GPU), or `cuda:N` to select a specific GPU (e.g. `cuda:0`, `cuda:1`).
+If the requested GPU index does not exist, GPUMA falls back to `cuda:0` with a warning.
 
 ```bash
-# use only GPU 1
-CUDA_VISIBLE_DEVICES=1 gpuma optimize --smiles "C=C" --output examples/example_output/ethylene_opt_gpu1.xyz --config examples/config.json
+# use GPU 1 explicitly
+gpuma --device cuda:1 optimize --smiles "C=C" --output output.xyz --config examples/config.json
 
-# use GPUs 1,2,3
-CUDA_VISIBLE_DEVICES=1,2,3 gpuma batch --xyz-dir examples/multi_xyz_dir/ --output examples/example_output/optimized_dir_gpu123.xyz --config examples/config.json
+# or set it in the config file: "device": "cuda:3"
+```
+
+Alternatively, you can use the `CUDA_VISIBLE_DEVICES` environment variable to control GPU visibility:
+
+```bash
+CUDA_VISIBLE_DEVICES=1 gpuma optimize --smiles "C=C" --output output.xyz --config examples/config.json
 ```

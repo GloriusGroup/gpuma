@@ -15,14 +15,18 @@
 
   "model": {
 
-    "model_type": "fairchem",
-    "model_name": "uma-m-1p1",
+    "model_type": "orb",
+    "model_name": "orb_v3_direct_omol",
 
     "model_path": null,
-    "model_cache_dir": "/mnt/share/models/cache",
+    "model_cache_dir": null,
 
     "huggingface_token": null,
-    "huggingface_token_file": null
+    "huggingface_token_file": null,
+
+    "d3_correction": false,
+    "d3_functional": "PBE",
+    "d3_damping": "BJ"
 
   },
 

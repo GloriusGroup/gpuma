@@ -1,3 +1,5 @@
+"""Data container for molecular structures in GPUMA."""
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -34,7 +36,7 @@ class Structure:
 
     @property
     def n_atoms(self) -> int:
-        """ Return the number of atoms in the structure.
+        """Return the number of atoms in the structure.
 
         Returns:
             int: Number of atoms.
@@ -42,7 +44,7 @@ class Structure:
         return len(self.symbols)
 
     def with_energy(self, energy: float | None) -> "Structure":
-        """ Set the energy of the structure and return the modified instance.
+        """Set the energy of the structure and return the modified instance.
 
         Args:
             energy (float | None): Energy value in eV to assign to this structure.

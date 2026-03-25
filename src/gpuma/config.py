@@ -27,26 +27,35 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "optimization": {
         "batch_optimization_mode": "batch",
         "batch_optimizer": "fire",
-        "max_num_conformers": 20,
-        "conformer_seed": 42,
-        # Default electronic structure settings
-        # Charge and multiplicity can be overridden via CLI for XYZ inputs
-        # and via config or CLI for SMILES multiplicities.
         "charge": 0,
         "multiplicity": 1,
-        # Convergence criteria
         "force_convergence_criterion": 5e-2,
         "energy_convergence_criterion": None,
-        "model_name": "uma-s-1p1",
+        "steps_between_swaps": 3,
+    },
+    "model": {
+        "model_type": "fairchem",
+        "model_name": "uma-s-1p2",
         "model_path": None,
-        # Optional local model cache directory; can be overridden by user config
         "model_cache_dir": None,
-        "device": default_device,
         "huggingface_token": None,
         "huggingface_token_file": None,
-        # Logging level control: one of "ERROR", "WARNING", "INFO", "DEBUG"
+        # D3 dispersion correction (ORB models only)
+        "d3_correction": False,
+        "d3_functional": "PBE",
+        "d3_damping": "BJ",
+    },
+    "conformer_generation": {
+        "max_num_conformers": 20,
+        "conformer_seed": 42,
+    },
+    "technical": {
+        "device": default_device,
+        "max_memory_padding": 0.95,
+        "memory_scaling_factor": 1.6,
+        "max_atoms_to_try": 100_000,
         "logging_level": "INFO",
-    }
+    },
 }
 
 
@@ -62,6 +71,39 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
         else:
             result[k] = v
     return result
+
+
+_MODEL_TYPE_ALIASES: dict[str, str] = {
+    "fairchem": "fairchem",
+    "uma": "fairchem",
+    "orb": "orb",
+    "orb-v3": "orb",
+}
+
+VALID_MODEL_TYPES: frozenset[str] = frozenset(_MODEL_TYPE_ALIASES)
+
+
+def resolve_model_type(config: Config | dict[str, Any]) -> str:
+    """Normalize a ``model_type`` value to its canonical form.
+
+    Accepted aliases:
+    - ``"fairchem"`` / ``"uma"`` -> ``"fairchem"``
+    - ``"orb"`` / ``"orb-v3"`` -> ``"orb"``
+
+    Works with either :class:`Config` or a plain dict.
+    """
+    if isinstance(config, Config):
+        raw = str(getattr(config.model, "model_type", "fairchem")).strip().lower()
+    else:
+        raw = str(
+            (config or {}).get("model", {}).get("model_type", "fairchem")
+        ).strip().lower()
+    canonical = _MODEL_TYPE_ALIASES.get(raw)
+    if canonical is None:
+        raise ValueError(
+            f"Unknown model_type {raw!r}. Must be one of: {sorted(VALID_MODEL_TYPES)}"
+        )
+    return canonical
 
 
 class _Section:
@@ -145,8 +187,8 @@ class Config:
     Example:
     -------
     >>> cfg = load_config_from_file()
-    >>> print(cfg.optimization.logging_level)
-    >>> cfg.optimization.device = "cuda"
+    >>> print(cfg.technical.logging_level)
+    >>> cfg.technical.device = "cuda"
     >>> save_config_to_file(cfg, "config.json")
 
     """
@@ -169,6 +211,21 @@ class Config:
     def optimization(self) -> _Section:
         """Return the optimization section of the configuration."""
         return _Section(self._data, ["optimization"])
+
+    @property
+    def model(self) -> _Section:
+        """Return the model section of the configuration."""
+        return _Section(self._data, ["model"])
+
+    @property
+    def conformer_generation(self) -> _Section:
+        """Return the conformer generation section of the configuration."""
+        return _Section(self._data, ["conformer_generation"])
+
+    @property
+    def technical(self) -> _Section:
+        """Return the technical section of the configuration."""
+        return _Section(self._data, ["technical"])
 
     def to_dict(self) -> dict[str, Any]:
         """Return a deep copy of the underlying configuration dictionary."""
@@ -223,7 +280,8 @@ def load_config_from_file(filepath: str = "config.json") -> Config:
     if user_cfg is not None and not isinstance(user_cfg, dict):
         raise ValueError("Configuration file must contain a JSON/YAML object at the root")
 
-    cfg = Config.from_dict(copy.deepcopy(user_cfg))
+    # Config.__init__ deep-merges via _deep_merge, so no need to deepcopy here
+    cfg = Config.from_dict(user_cfg)
     validate_config(cfg)
     return cfg
 
@@ -252,41 +310,24 @@ def save_config_to_file(config: Any, filepath: str) -> None:
     _read_config_file.cache_clear()
 
 
-def get_huggingface_token(config: Config | dict[str, Any]) -> str | None:
-    """Return the HuggingFace token from config or a file, if available.
-
-    Works with either :class:`Config` or a plain dict. Checks
-    ``optimization.huggingface_token`` first, then
-    ``optimization.huggingface_token_file``.
-    """
-    if isinstance(config, Config):
-        return config.optimization.get_huggingface_token()
-
-    opt = (config or {}).get("optimization", {})
-    token = opt.get("huggingface_token")
-    if token:
-        return str(token)
-
-    token_file = opt.get("huggingface_token_file")
-    if not token_file:
-        return None
-
-    try:
-        with open(str(token_file), encoding="utf-8") as fh:
-            content = fh.read().strip()
-        return content or None
-    except OSError as e:
-        logger.warning("Could not read HuggingFace token from %s: %s", token_file, e)
-        return None
-
-
 def validate_config(config: Config) -> None:
-    """Validate core optimization settings in a Config instance.
+    """Validate core configuration settings in a Config instance.
 
-    Checks basic types and value ranges for commonly used options.
+    Checks basic types and value ranges for commonly used options across
+    the ``optimization``, ``model``, ``conformer_generation``, and
+    ``technical`` sections.
     Raises ValueError if an invalid value is found.
     """
     opt = config.optimization
+    mdl = config.model
+    tech = config.technical
+
+    # Model type must be a known value
+    raw_model_type = str(getattr(mdl, "model_type", "fairchem")).strip().lower()
+    if raw_model_type not in VALID_MODEL_TYPES:
+        raise ValueError(
+            f"Unknown model_type {raw_model_type!r}. Must be one of: {sorted(VALID_MODEL_TYPES)}"
+        )
 
     # Charge and multiplicity must be integers; multiplicity > 0
     charge = getattr(opt, "charge", 0)
@@ -327,7 +368,7 @@ def validate_config(config: Config) -> None:
             ) from exc
 
     # Device must be cpu, cuda or cuda:N
-    dev = str(getattr(opt, "device", default_device) or "").strip().lower()
+    dev = str(getattr(tech, "device", default_device) or "").strip().lower()
     if not dev:
         raise ValueError("Device string in config cannot be empty")
     if dev != "cpu" and not dev.startswith("cuda"):
