@@ -3,7 +3,7 @@
 Provides two public functions:
 
 - :func:`optimize_single_structure` — optimize a single :class:`Structure`
-  using ASE/BFGS with an ML calculator.
+  using an ASE optimizer (FIRE, BFGS, or LBFGS) with an ML calculator.
 - :func:`optimize_structure_batch` — optimize a list of structures, either
   sequentially or via GPU-accelerated torch-sim batch optimization.
 
@@ -205,7 +205,7 @@ def optimize_single_structure(
     config: Config | None = None,
     calculator: Any | None = None,
 ) -> Structure:
-    """Optimize a single :class:`Structure` using ASE/BFGS.
+    """Optimize a single :class:`Structure` using an ASE optimizer.
 
     The same ``structure`` instance is returned with updated coordinates and
     energy.
@@ -273,7 +273,7 @@ def optimize_structure_batch(
     ``config.optimization.batch_optimization_mode``:
 
     - ``"sequential"``: Each structure is optimized individually with
-      ASE/BFGS using a shared calculator.
+      ASE using a shared calculator.
     - ``"batch"``: All structures are optimized together using torch-sim
       GPU-accelerated batch optimization (requires GPU).
 
@@ -339,7 +339,7 @@ def _optimize_sequential(
     structures: list[Structure],
     config: Config,
 ) -> list[Structure]:
-    """Optimize structures one-by-one using ASE/BFGS with a shared calculator."""
+    """Optimize structures one-by-one using ASE with a shared calculator."""
     calculator = _get_cached_calculator(config)
 
     logger.info("Starting sequential optimization of %d structures", len(structures))

@@ -157,7 +157,9 @@ def print_summary(rows: list[dict]) -> None:
     print(f"\n{'=' * 70}")
     print("  BENCHMARK SUMMARY")
     print(f"{'=' * 70}")
-    print(f"  {'Model':<35s} {'Optim':>10s} {'fconv':>8s} {'Success':>8s} {'Time (s)':>10s} {'Struct/s':>10s}")
+    hdr = (f"  {'Model':<35s} {'Optim':>10s} {'fconv':>8s}"
+           f" {'Success':>8s} {'Time':>10s} {'Struct/s':>10s}")
+    print(hdr)
     print(f"  {'-' * 35} {'-' * 10} {'-' * 8} {'-' * 8} {'-' * 10} {'-' * 10}")
     for r in rows:
         rate = r["throughput_structures_per_sec"] or 0
@@ -166,11 +168,11 @@ def print_summary(rows: list[dict]) -> None:
         optim = r.get("optimizer") or "N/A"
         print(
             f"  {r['model']:<35s} "
-            f"{optim:>10s}"
-            f" {fc_str:>8s}"
-            f" {r['structures_output']:>4d}/{r['structures_input']:<4d}"
-            f" {r['total_time_sec']:>10.1f}"
-            f" {rate:>10.1f}"
+            f"{optim:>10s} "
+            f"{fc_str:>8s} "
+            f"{r['structures_output']:>4d}/{r['structures_input']:<4d} "
+            f"{r['total_time_sec']:>10.1f} "
+            f"{rate:>10.1f}"
         )
     print(f"{'=' * 90}")
 

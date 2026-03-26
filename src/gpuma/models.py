@@ -4,7 +4,7 @@ This module provides two public entry points for loading machine-learning
 interatomic potentials:
 
 - :func:`load_calculator` returns an ASE-compatible calculator for
-  single-structure optimization (ASE/BFGS).
+  single-structure optimization (ASE).
 - :func:`load_torchsim_model` returns a torch-sim model wrapper for
   GPU-accelerated batch optimization.
 

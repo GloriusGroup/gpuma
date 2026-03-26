@@ -172,7 +172,7 @@ def example_batch_from_xyz_directory_orb():
 def example_ensemble_from_smiles_orb_sequential():
     """Example 8: Conformer ensemble optimization (ORB-v3, sequential mode).
 
-    Falls back to ASE/BFGS per-structure optimization.  Useful when no GPU
+    Falls back to ASE per-structure optimization.  Useful when no GPU
     is available or for small ensembles.
     """
     print("\n=== Example 8: Ensemble optimization from SMILES (ORB-v3, sequential) ===")
