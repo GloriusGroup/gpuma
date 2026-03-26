@@ -4,6 +4,7 @@ import pytest
 import yaml
 
 from gpuma.config import (
+    VALID_BATCH_OPTIMIZERS,
     Config,
     load_config_from_file,
     resolve_model_type,
@@ -216,3 +217,39 @@ def test_technical_to_dict():
     assert d["technical"]["max_memory_padding"] == 0.95
     assert d["technical"]["memory_scaling_factor"] == 1.6
     assert d["technical"]["logging_level"] == "INFO"
+
+
+# --- batch_optimizer validation ---
+
+
+def test_valid_batch_optimizers_constant():
+    assert VALID_BATCH_OPTIMIZERS == {"fire", "gradient_descent", "lbfgs", "bfgs"}
+
+
+@pytest.mark.parametrize("optimizer", ["fire", "gradient_descent", "lbfgs", "bfgs"])
+def test_batch_optimizer_valid_values(optimizer):
+    cfg = Config({"optimization": {"batch_optimizer": optimizer}})
+    assert cfg.optimization.batch_optimizer == optimizer
+
+
+def test_batch_optimizer_default_is_fire():
+    cfg = Config()
+    assert cfg.optimization.batch_optimizer == "fire"
+
+
+def test_batch_optimizer_invalid_defaults_to_fire():
+    cfg = Config({"optimization": {"batch_optimizer": "invalid_optimizer"}})
+    assert cfg.optimization.batch_optimizer == "fire"
+
+
+def test_batch_optimizer_none_defaults_to_fire():
+    cfg = Config({"optimization": {"batch_optimizer": None}})
+    assert cfg.optimization.batch_optimizer == "fire"
+
+
+def test_batch_optimizer_case_normalized():
+    cfg = Config({"optimization": {"batch_optimizer": "LBFGS"}})
+    assert cfg.optimization.batch_optimizer == "lbfgs"
+
+    cfg = Config({"optimization": {"batch_optimizer": "Fire"}})
+    assert cfg.optimization.batch_optimizer == "fire"

@@ -200,3 +200,119 @@ def test_optimize_batch_empty_structure():
     empty = Structure(symbols=[], coordinates=[], charge=0, multiplicity=1)
     with pytest.raises(ValueError, match="empty structure"):
         optimize_structure_batch([empty])
+
+
+# --- batch_optimizer selection tests ---
+
+
+@pytest.mark.parametrize("optimizer_name", ["fire", "gradient_descent", "lbfgs", "bfgs"])
+def test_optimize_batch_selects_correct_optimizer(sample_structure, optimizer_name):
+    """Each of the 4 torch-sim optimizers can be selected via config."""
+    config = Config({
+        "optimization": {
+            "batch_optimization_mode": "batch",
+            "batch_optimizer": optimizer_name,
+        },
+        "technical": {"device": "cuda"},
+    })
+
+    with patch("gpuma.optimizer._parse_device_string", return_value="cuda"), \
+         patch("torch_sim.io.atoms_to_state") as mock_ats, \
+         patch("torch_sim.optimize") as mock_optimize, \
+         patch("torch_sim.autobatching.InFlightAutoBatcher") as _:
+
+        mock_state = MagicMock()
+        mock_state.n_atoms = 5
+        mock_ats.return_value = mock_state
+
+        mock_final_state = MagicMock()
+        mock_final_state.energy = [MagicMock(item=lambda: -60.0)]
+        mock_final_state.charge = [MagicMock(item=lambda: 0)]
+        mock_final_state.spin = [MagicMock(item=lambda: 1)]
+
+        mock_atoms = MagicMock()
+        mock_atoms.get_chemical_symbols.return_value = ["C", "H", "H", "H", "H"]
+        mock_pos = MagicMock()
+        mock_pos.tolist.return_value = [[0.0, 0.0, 0.0]] * 5
+        mock_atoms.get_positions.return_value = mock_pos
+        mock_final_state.to_atoms.return_value = [mock_atoms]
+
+        mock_optimize.return_value = mock_final_state
+
+        import torch_sim
+        expected_optimizer = getattr(torch_sim.Optimizer, optimizer_name)
+
+        results = optimize_structure_batch([sample_structure], config)
+
+        # Verify the correct optimizer enum was passed to torch_sim.optimize
+        call_kwargs = mock_optimize.call_args
+        assert call_kwargs.kwargs.get("optimizer") == expected_optimizer
+        assert len(results) == 1
+
+
+def test_optimization_summary_includes_optimizer(sample_structure, caplog):
+    """Verify the optimization summary includes the optimizer name."""
+    config = Config({
+        "optimization": {
+            "batch_optimization_mode": "sequential",
+            "batch_optimizer": "lbfgs",
+        },
+    })
+
+    with caplog.at_level(logging.INFO, logger="gpuma.logging_utils"):
+        optimize_structure_batch([sample_structure], config)
+
+    assert "Optimizer:           lbfgs" in caplog.text
+
+
+# --- ASE optimizer selection for single-structure mode ---
+
+
+@pytest.mark.parametrize("optimizer_name,expected_cls_name", [
+    ("fire", "FIRE"),
+    ("bfgs", "BFGS"),
+    ("lbfgs", "LBFGS"),
+])
+def test_single_structure_selects_correct_ase_optimizer(
+    sample_structure, optimizer_name, expected_cls_name,
+):
+    """Each ASE optimizer can be selected via batch_optimizer config."""
+    config = Config({
+        "optimization": {"batch_optimizer": optimizer_name},
+    })
+    from gpuma.optimizer import _resolve_ase_optimizer
+    cls, name = _resolve_ase_optimizer(config)
+    assert cls.__name__ == expected_cls_name
+    assert name == optimizer_name
+
+
+def test_single_structure_gradient_descent_falls_back_to_fire(sample_structure, caplog):
+    """gradient_descent has no ASE equivalent; should fall back to FIRE with warning."""
+    config = Config({
+        "optimization": {"batch_optimizer": "gradient_descent"},
+    })
+    from gpuma.optimizer import _resolve_ase_optimizer
+    with caplog.at_level(logging.WARNING):
+        cls, name = _resolve_ase_optimizer(config)
+    assert cls.__name__ == "FIRE"
+    assert name == "fire"
+    assert "no gradient_descent optimizer" in caplog.text
+
+
+def test_single_structure_default_optimizer_is_fire(sample_structure):
+    """Default optimizer should be FIRE (matching DEFAULT_CONFIG)."""
+    config = Config()
+    from gpuma.optimizer import _resolve_ase_optimizer
+    cls, name = _resolve_ase_optimizer(config)
+    assert cls.__name__ == "FIRE"
+    assert name == "fire"
+
+
+def test_single_structure_optimizer_logged(sample_structure, caplog):
+    """Single structure optimization should log which optimizer is used."""
+    config = Config({
+        "optimization": {"batch_optimizer": "bfgs"},
+    })
+    with caplog.at_level(logging.INFO):
+        optimize_single_structure(sample_structure, config)
+    assert "optimizer=bfgs" in caplog.text

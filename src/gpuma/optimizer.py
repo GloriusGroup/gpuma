@@ -3,7 +3,7 @@
 Provides two public functions:
 
 - :func:`optimize_single_structure` — optimize a single :class:`Structure`
-  using ASE/BFGS with an ML calculator.
+  using an ASE optimizer (FIRE, BFGS, or LBFGS) with an ML calculator.
 - :func:`optimize_structure_batch` — optimize a list of structures, either
   sequentially or via GPU-accelerated torch-sim batch optimization.
 
@@ -18,7 +18,7 @@ import logging
 from typing import Any
 
 from ase import Atoms
-from ase.optimize import BFGS
+from ase.optimize import BFGS, FIRE, LBFGS
 
 from .config import Config, load_config_from_file, resolve_model_type
 from .decorators import timed_block
@@ -168,6 +168,33 @@ def _resolve_batch_convergence(config: Config):
     return torch_sim.generate_force_convergence_fn(force_tol=0.05)
 
 
+_ASE_OPTIMIZER_MAP = {
+    "fire": FIRE,
+    "bfgs": BFGS,
+    "lbfgs": LBFGS,
+}
+
+
+def _resolve_ase_optimizer(config: Config) -> tuple[type, str]:
+    """Return the ASE optimizer class and effective name from config.
+
+    ``gradient_descent`` has no ASE equivalent and falls back to FIRE
+    with a warning.
+    """
+    name = str(config.optimization.batch_optimizer).strip().lower()
+    cls = _ASE_OPTIMIZER_MAP.get(name)
+    if cls is not None:
+        return cls, name
+    if name == "gradient_descent":
+        logger.warning(
+            "ASE has no gradient_descent optimizer; falling back to FIRE "
+            "for single-structure optimization."
+        )
+        return FIRE, "fire"
+    logger.warning("Unknown optimizer %r; falling back to FIRE.", name)
+    return FIRE, "fire"
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -178,7 +205,7 @@ def optimize_single_structure(
     config: Config | None = None,
     calculator: Any | None = None,
 ) -> Structure:
-    """Optimize a single :class:`Structure` using ASE/BFGS.
+    """Optimize a single :class:`Structure` using an ASE optimizer.
 
     The same ``structure`` instance is returned with updated coordinates and
     energy.
@@ -216,12 +243,15 @@ def optimize_single_structure(
         atoms.info = {"charge": structure.charge, "spin": structure.multiplicity}
 
         fmax = _resolve_force_criterion(config)
+        opt_cls, opt_name = _resolve_ase_optimizer(config)
 
         logger.info(
-            "Starting single geometry optimization for structure with %d atoms",
+            "Starting single geometry optimization for structure with %d atoms "
+            "(optimizer=%s)",
             structure.n_atoms,
+            opt_name,
         )
-        optimizer = BFGS(atoms, logfile=None)
+        optimizer = opt_cls(atoms, logfile=None)
         optimizer.run(fmax=fmax)
         logger.info("Optimization completed after %d steps", optimizer.get_number_of_steps())
 
@@ -243,7 +273,7 @@ def optimize_structure_batch(
     ``config.optimization.batch_optimization_mode``:
 
     - ``"sequential"``: Each structure is optimized individually with
-      ASE/BFGS using a shared calculator.
+      ASE using a shared calculator.
     - ``"batch"``: All structures are optimized together using torch-sim
       GPU-accelerated batch optimization (requires GPU).
 
@@ -309,7 +339,7 @@ def _optimize_sequential(
     structures: list[Structure],
     config: Config,
 ) -> list[Structure]:
-    """Optimize structures one-by-one using ASE/BFGS with a shared calculator."""
+    """Optimize structures one-by-one using ASE with a shared calculator."""
     calculator = _get_cached_calculator(config)
 
     logger.info("Starting sequential optimization of %d structures", len(structures))
@@ -346,13 +376,22 @@ def _optimize_batch(
     device = _device_for_torch(config.technical.device)
     model = _get_cached_torchsim_model(config)
 
-    # Select optimizer
+    # Select optimizer (validated/defaulted to "fire" by config validation)
     optimizer_name = str(config.optimization.batch_optimizer).strip().lower()
-    optimizer = (
-        torch_sim.Optimizer.fire
-        if optimizer_name == "fire"
-        else torch_sim.Optimizer.gradient_descent
-    )
+    _batch_optimizer_map = {
+        "fire": torch_sim.Optimizer.fire,
+        "gradient_descent": torch_sim.Optimizer.gradient_descent,
+        "lbfgs": torch_sim.Optimizer.lbfgs,
+        "bfgs": torch_sim.Optimizer.bfgs,
+    }
+    optimizer = _batch_optimizer_map.get(optimizer_name)
+    if optimizer is None:
+        logger.warning(
+            "Unknown batch optimizer %r; falling back to FIRE.", optimizer_name
+        )
+        optimizer = torch_sim.Optimizer.fire
+        optimizer_name = "fire"
+    logger.info("Batch optimizer: %s", optimizer_name)
 
     convergence_fn = _resolve_batch_convergence(config)
 

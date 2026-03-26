@@ -72,6 +72,8 @@ def log_optimization_summary(
     model_type = resolve_model_type(config)
     device = str(config.technical.device)
 
+    batch_optimizer = str(getattr(config.optimization, "batch_optimizer", "fire"))
+
     lines = [
         "",
         "=" * 60,
@@ -80,6 +82,7 @@ def log_optimization_summary(
         f"  Model:               {model_type} / {model_name}",
         f"  Device:              {device}",
         f"  Mode:                {mode}",
+        f"  Optimizer:           {batch_optimizer}",
         "-" * 60,
         f"  Structures input:    {n_input}",
         f"  Structures output:   {n_output}",

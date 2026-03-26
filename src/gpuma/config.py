@@ -82,6 +82,10 @@ _MODEL_TYPE_ALIASES: dict[str, str] = {
 
 VALID_MODEL_TYPES: frozenset[str] = frozenset(_MODEL_TYPE_ALIASES)
 
+VALID_BATCH_OPTIMIZERS: frozenset[str] = frozenset(
+    {"fire", "gradient_descent", "lbfgs", "bfgs"}
+)
+
 
 def resolve_model_type(config: Config | dict[str, Any]) -> str:
     """Normalize a ``model_type`` value to its canonical form.
@@ -328,6 +332,19 @@ def validate_config(config: Config) -> None:
         raise ValueError(
             f"Unknown model_type {raw_model_type!r}. Must be one of: {sorted(VALID_MODEL_TYPES)}"
         )
+
+    # Batch optimizer must be a known value; default to "fire" if missing/invalid
+    raw_optimizer = str(getattr(opt, "batch_optimizer", "fire") or "fire").strip().lower()
+    if raw_optimizer not in VALID_BATCH_OPTIMIZERS:
+        logger.warning(
+            "Unknown batch_optimizer %r, defaulting to 'fire'. "
+            "Valid options: %s",
+            raw_optimizer,
+            sorted(VALID_BATCH_OPTIMIZERS),
+        )
+        opt.batch_optimizer = "fire"
+    else:
+        opt.batch_optimizer = raw_optimizer
 
     # Charge and multiplicity must be integers; multiplicity > 0
     charge = getattr(opt, "charge", 0)
