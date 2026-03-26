@@ -106,6 +106,8 @@ except ImportError:
     ase.Atoms = MagicMock(side_effect=mock_atoms_factory)
     ase_optimize = _mock_module("ase.optimize")
     ase_optimize.BFGS = MagicMock()
+    ase_optimize.FIRE = MagicMock()
+    ase_optimize.LBFGS = MagicMock()
 
     ase_data = _mock_module("ase.data")
     dummy_symbols = ["X"] + ["H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne"] * 20

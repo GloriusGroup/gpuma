@@ -263,3 +263,56 @@ def test_optimization_summary_includes_optimizer(sample_structure, caplog):
         optimize_structure_batch([sample_structure], config)
 
     assert "Optimizer:           lbfgs" in caplog.text
+
+
+# --- ASE optimizer selection for single-structure mode ---
+
+
+@pytest.mark.parametrize("optimizer_name,expected_cls_name", [
+    ("fire", "FIRE"),
+    ("bfgs", "BFGS"),
+    ("lbfgs", "LBFGS"),
+])
+def test_single_structure_selects_correct_ase_optimizer(
+    sample_structure, optimizer_name, expected_cls_name,
+):
+    """Each ASE optimizer can be selected via batch_optimizer config."""
+    config = Config({
+        "optimization": {"batch_optimizer": optimizer_name},
+    })
+    from gpuma.optimizer import _resolve_ase_optimizer
+    cls, name = _resolve_ase_optimizer(config)
+    assert cls.__name__ == expected_cls_name
+    assert name == optimizer_name
+
+
+def test_single_structure_gradient_descent_falls_back_to_fire(sample_structure, caplog):
+    """gradient_descent has no ASE equivalent; should fall back to FIRE with warning."""
+    config = Config({
+        "optimization": {"batch_optimizer": "gradient_descent"},
+    })
+    from gpuma.optimizer import _resolve_ase_optimizer
+    with caplog.at_level(logging.WARNING):
+        cls, name = _resolve_ase_optimizer(config)
+    assert cls.__name__ == "FIRE"
+    assert name == "fire"
+    assert "no gradient_descent optimizer" in caplog.text
+
+
+def test_single_structure_default_optimizer_is_fire(sample_structure):
+    """Default optimizer should be FIRE (matching DEFAULT_CONFIG)."""
+    config = Config()
+    from gpuma.optimizer import _resolve_ase_optimizer
+    cls, name = _resolve_ase_optimizer(config)
+    assert cls.__name__ == "FIRE"
+    assert name == "fire"
+
+
+def test_single_structure_optimizer_logged(sample_structure, caplog):
+    """Single structure optimization should log which optimizer is used."""
+    config = Config({
+        "optimization": {"batch_optimizer": "bfgs"},
+    })
+    with caplog.at_level(logging.INFO):
+        optimize_single_structure(sample_structure, config)
+    assert "optimizer=bfgs" in caplog.text

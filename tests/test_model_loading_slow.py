@@ -15,12 +15,11 @@ errors when loading many models sequentially.
 import gc
 import os
 
-import numpy as np
 import pytest
 import torch
 from ase import Atoms
 
-from gpuma.config import Config, VALID_BATCH_OPTIMIZERS
+from gpuma.config import VALID_BATCH_OPTIMIZERS, Config
 from gpuma.models import (
     AVAILABLE_FAIRCHEM_MODELS,
     AVAILABLE_ORB_MODELS,
