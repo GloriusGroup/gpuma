@@ -15,17 +15,20 @@ errors when loading many models sequentially.
 import gc
 import os
 
+import numpy as np
 import pytest
 import torch
 from ase import Atoms
 
-from gpuma.config import Config
+from gpuma.config import Config, VALID_BATCH_OPTIMIZERS
 from gpuma.models import (
     AVAILABLE_FAIRCHEM_MODELS,
     AVAILABLE_ORB_MODELS,
     load_calculator,
     load_torchsim_model,
 )
+from gpuma.optimizer import optimize_structure_batch
+from gpuma.structure import Structure
 
 # All tests in this module require real model loading (no mocks) and are slow.
 pytestmark = [pytest.mark.slow, pytest.mark.real_model]
@@ -357,3 +360,62 @@ def test_invalid_gpu_index_fallback_fairchem(caplog):
     calc = load_calculator(config)
     assert calc is not None
     assert "Falling back to cuda:0" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# torch-sim optimizer initialization tests
+#
+# These tests verify that each of the 4 torch-sim optimizers (fire,
+# gradient_descent, lbfgs, bfgs) can actually initialize and run a short
+# optimization through the full gpuma pipeline.
+# ---------------------------------------------------------------------------
+
+ETHANOL_STRUCTURE = Structure(
+    symbols=["C", "C", "O", "H", "H", "H", "H", "H", "H"],
+    coordinates=[
+        [-0.047, 0.536, 0.000],
+        [-1.268, -0.376, 0.000],
+        [1.139, -0.227, 0.000],
+        [-0.045, 1.163, 0.891],
+        [-0.045, 1.163, -0.891],
+        [-1.307, -0.998, 0.891],
+        [-1.307, -0.998, -0.891],
+        [-2.149, 0.259, 0.000],
+        [1.960, 0.286, 0.000],
+    ],
+    charge=0,
+    multiplicity=1,
+    comment="Ethanol",
+)
+
+
+@pytest.mark.parametrize("optimizer_name", sorted(VALID_BATCH_OPTIMIZERS))
+def test_torchsim_optimizer_runs(optimizer_name: str):
+    """Each torch-sim optimizer initializes and produces a result via batch optimization."""
+    _skip_if_no_cuda()
+
+    config = Config({
+        "optimization": {
+            "batch_optimization_mode": "batch",
+            "batch_optimizer": optimizer_name,
+            "force_convergence_criterion": 0.5,  # loose, just testing init
+        },
+        "model": {
+            "model_type": "orb",
+            "model_name": "orb_v3_direct_omol",
+        },
+        "technical": {
+            "device": DEVICE,
+            "max_atoms_to_try": 1000,
+        },
+    })
+
+    # Use multiple structures so the autobatcher calibrates properly
+    structures = [ETHANOL_STRUCTURE] * 3
+    results = optimize_structure_batch(structures, config)
+
+    assert len(results) == 3
+    for r in results:
+        assert r.energy is not None
+        assert isinstance(r.energy, float)
+        assert r.energy != 0.0, f"Optimizer {optimizer_name} returned zero energy"

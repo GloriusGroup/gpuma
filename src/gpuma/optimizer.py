@@ -346,13 +346,16 @@ def _optimize_batch(
     device = _device_for_torch(config.technical.device)
     model = _get_cached_torchsim_model(config)
 
-    # Select optimizer
+    # Select optimizer (validated/defaulted to "fire" by config validation)
     optimizer_name = str(config.optimization.batch_optimizer).strip().lower()
-    optimizer = (
-        torch_sim.Optimizer.fire
-        if optimizer_name == "fire"
-        else torch_sim.Optimizer.gradient_descent
-    )
+    _optimizer_map = {
+        "fire": torch_sim.Optimizer.fire,
+        "gradient_descent": torch_sim.Optimizer.gradient_descent,
+        "lbfgs": torch_sim.Optimizer.lbfgs,
+        "bfgs": torch_sim.Optimizer.bfgs,
+    }
+    optimizer = _optimizer_map.get(optimizer_name, torch_sim.Optimizer.fire)
+    logger.info("Batch optimizer: %s", optimizer_name)
 
     convergence_fn = _resolve_batch_convergence(config)
 

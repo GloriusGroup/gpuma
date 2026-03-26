@@ -73,6 +73,7 @@ for _base in BASE_MODELS:
 
 CSV_FIELDS = [
     "model",
+    "optimizer",
     "force_convergence_criterion",
     "structures_input",
     "structures_output",
@@ -119,8 +120,10 @@ def run_benchmark(model_spec: dict, structures: list) -> dict:
     total_atoms = sum(atom_counts) if atom_counts else 0
 
     force_crit = config.optimization.force_convergence_criterion
+    batch_optimizer = str(config.optimization.batch_optimizer)
     row = {
         "model": name,
+        "optimizer": batch_optimizer,
         "force_convergence_criterion": force_crit,
         "structures_input": n_input,
         "structures_output": n_output,
@@ -139,6 +142,7 @@ def run_benchmark(model_spec: dict, structures: list) -> dict:
         "energy_spread_eV": round(max(energies) - min(energies), 4) if energies else None,
     }
 
+    print(f"  Optimizer:  {batch_optimizer}")
     print(f"  Structures: {n_output}/{n_input} successful")
     print(f"  Time:       {elapsed:.1f} sec ({n_output / elapsed:.1f} struct/sec)")
     if energies:
@@ -153,20 +157,22 @@ def print_summary(rows: list[dict]) -> None:
     print(f"\n{'=' * 70}")
     print("  BENCHMARK SUMMARY")
     print(f"{'=' * 70}")
-    print(f"  {'Model':<35s} {'fconv':>8s} {'Success':>8s} {'Time (s)':>10s} {'Struct/s':>10s}")
-    print(f"  {'-' * 35} {'-' * 8} {'-' * 8} {'-' * 10} {'-' * 10}")
+    print(f"  {'Model':<35s} {'Optim':>10s} {'fconv':>8s} {'Success':>8s} {'Time (s)':>10s} {'Struct/s':>10s}")
+    print(f"  {'-' * 35} {'-' * 10} {'-' * 8} {'-' * 8} {'-' * 10} {'-' * 10}")
     for r in rows:
         rate = r["throughput_structures_per_sec"] or 0
         fc = r.get("force_convergence_criterion")
         fc_str = f"{fc:.0e}" if fc is not None else "N/A"
+        optim = r.get("optimizer") or "N/A"
         print(
             f"  {r['model']:<35s} "
+            f"{optim:>10s}"
             f"{fc_str:>8s}"
             f"{r['structures_output']:>4d}/{r['structures_input']:<4d}"
             f"{r['total_time_sec']:>10.1f}"
             f"{rate:>10.1f}"
         )
-    print(f"{'=' * 80}")
+    print(f"{'=' * 90}")
 
 
 def save_csv(rows: list[dict], path: str) -> None:
@@ -195,6 +201,9 @@ if __name__ == "__main__":
             print(f"  FAILED: {exc}")
             failed_row = {f: None for f in CSV_FIELDS}
             failed_row["model"] = spec["name"]
+            failed_row["optimizer"] = spec["overrides"].get(
+                "optimization", {}
+            ).get("batch_optimizer", "fire")
             failed_row["force_convergence_criterion"] = spec["overrides"].get(
                 "optimization", {}
             ).get("force_convergence_criterion")

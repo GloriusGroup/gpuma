@@ -136,7 +136,7 @@ technical:
 | Parameter | Default | Description |
 |---|---|---|
 | `batch_optimization_mode` | `"batch"` | `"sequential"` (ASE/BFGS per structure) or `"batch"` (torch-sim GPU-accelerated) |
-| `batch_optimizer` | `"fire"` | Optimizer for batch mode: `"fire"` or `"gradient_descent"` |
+| `batch_optimizer` | `"fire"` | Optimizer for batch mode: `"fire"`, `"gradient_descent"`, `"lbfgs"`, or `"bfgs"`. Defaults to `"fire"` if invalid or unset |
 | `charge` | `0` | Total charge of the system (inferred from SMILES, not overridden) |
 | `multiplicity` | `1` | Spin multiplicity of the system |
 | `force_convergence_criterion` | `5e-2` | Force convergence threshold (eV/A). Used for both single and batch modes |
