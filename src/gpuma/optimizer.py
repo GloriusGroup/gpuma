@@ -45,12 +45,26 @@ def _cache_key(config: Config) -> tuple:
         str(mdl.model_cache_dir) if mdl.model_cache_dir else None,
         str(mdl.huggingface_token) if mdl.huggingface_token else None,
         str(mdl.huggingface_token_file) if mdl.huggingface_token_file else None,
+        bool(mdl.get("d3_correction", False)),
+        str(mdl.get("d3_functional", "PBE")),
+        str(mdl.get("d3_damping", "BJ")),
     )
 
 
 def _config_from_key(key: tuple) -> Config:
     """Reconstruct a minimal :class:`Config` from a cache key tuple."""
-    model_type, device, model_name, model_path, cache_dir, hf_token, hf_token_file = key
+    (
+        model_type,
+        device,
+        model_name,
+        model_path,
+        cache_dir,
+        hf_token,
+        hf_token_file,
+        d3_correction,
+        d3_functional,
+        d3_damping,
+    ) = key
     return Config(
         {
             "model": {
@@ -60,6 +74,9 @@ def _config_from_key(key: tuple) -> Config:
                 "model_cache_dir": cache_dir,
                 "huggingface_token": hf_token,
                 "huggingface_token_file": hf_token_file,
+                "d3_correction": d3_correction,
+                "d3_functional": d3_functional,
+                "d3_damping": d3_damping,
             },
             "technical": {
                 "device": device,
@@ -77,10 +94,16 @@ def _load_calculator_cached(
     model_cache_dir: str | None,
     hf_token: str | None,
     hf_token_file: str | None,
+    d3_correction: bool,
+    d3_functional: str,
+    d3_damping: str,
 ) -> Any:
     """Cached calculator loading (hashable args required by lru_cache)."""
     cfg = _config_from_key(
-        (model_type, device, model_name, model_path, model_cache_dir, hf_token, hf_token_file)
+        (
+            model_type, device, model_name, model_path, model_cache_dir,
+            hf_token, hf_token_file, d3_correction, d3_functional, d3_damping,
+        )
     )
     return load_calculator(cfg)
 
@@ -94,10 +117,16 @@ def _load_torchsim_cached(
     model_cache_dir: str | None,
     hf_token: str | None,
     hf_token_file: str | None,
+    d3_correction: bool,
+    d3_functional: str,
+    d3_damping: str,
 ) -> Any:
     """Cached torch-sim model loading (hashable args required by lru_cache)."""
     cfg = _config_from_key(
-        (model_type, device, model_name, model_path, model_cache_dir, hf_token, hf_token_file)
+        (
+            model_type, device, model_name, model_path, model_cache_dir,
+            hf_token, hf_token_file, d3_correction, d3_functional, d3_damping,
+        )
     )
     return load_torchsim_model(cfg)
 
@@ -368,13 +397,15 @@ def _optimize_batch(
     import torch
     import torch_sim
     from torch_sim.autobatching import InFlightAutoBatcher
+    from torch_sim.typing import SystemExtras
 
     from .models import _device_for_torch
 
     logger.info("Starting batch optimization of %d structures", len(structures))
 
     device = _device_for_torch(config.technical.device)
-    model = _get_cached_torchsim_model(config)
+    with timed_block("Model loading"):
+        model = _get_cached_torchsim_model(config)
 
     # Select optimizer (validated/defaulted to "fire" by config validation)
     optimizer_name = str(config.optimization.batch_optimizer).strip().lower()
@@ -416,6 +447,10 @@ def _optimize_batch(
         ase_structures,
         device=torch.device(device),
         dtype=torch.float64,
+        system_extras_map={
+            SystemExtras.CHARGE: "charge",
+            SystemExtras.SPIN: "spin",
+        },
     )
 
     max_memory_padding = float(config.technical.max_memory_padding)
@@ -431,7 +466,7 @@ def _optimize_batch(
     memory_scales_with = "n_edges" if model_metric == "n_atoms_x_density" else model_metric
 
     effective_max_atoms = min(batched_state.n_atoms, max_atoms_to_try)
-    with timed_block("Autobatcher setup") as t_batcher:
+    with timed_block("Memory estimation"):
         batcher = InFlightAutoBatcher(
             model,
             memory_scales_with=memory_scales_with,
@@ -453,7 +488,7 @@ def _optimize_batch(
             steps_between_swaps,
         )
 
-    with timed_block("Batch optimization") as t_opt:
+    with timed_block("Optimization"):
         final_state = torch_sim.optimize(
             system=batched_state,
             model=model,
@@ -462,11 +497,6 @@ def _optimize_batch(
             autobatcher=batcher,
             steps_between_swaps=steps_between_swaps,
         )
-    logger.debug(
-        "Timing breakdown — autobatcher: %.2f sec, optimization: %.2f sec",
-        t_batcher.elapsed,
-        t_opt.elapsed,
-    )
 
     # Extract results
     final_atoms = final_state.to_atoms()

@@ -12,7 +12,9 @@ using machine-learning interatomic potentials (MLIPs).
 Two model backends are supported out of the box:
 
 - **Fairchem UMA** ([UMA/OMol25](https://arxiv.org/abs/2505.08762)) — the default backend.
-- **ORB-v3** ([orbital-materials/orb-models](https://github.com/orbital-materials/orb-models)) — with optional D3 dispersion correction.
+- **ORB-v3** ([orbital-materials/orb-models](https://github.com/orbital-materials/orb-models)).
+
+Both backends support optional DFT-D3(BJ) dispersion correction.
 
 GPUMA is especially designed for batch optimizations of many structures (conformer ensembles, datasets) on GPU,
 ensuring efficient parallelization and maximum GPU utilization by leveraging the [torch-sim library](https://arxiv.org/abs/2508.06628).
@@ -109,6 +111,7 @@ Also check the [examples/](examples) folder in the repository for sample config 
 - [examples/config_orb.json](examples/config_orb.json) – ORB-v3 configuration (with D3 options)
 - [examples/example_single_optimization.py](examples/example_single_optimization.py) – single-structure optimization from Python
 - [examples/example_ensemble_optimization.py](examples/example_ensemble_optimization.py) – ensemble/multi-structure optimization from Python
+- [examples/example_dispersion.py](examples/example_dispersion.py) – DFT-D3(BJ) correction with both backends (single + batch)
 
 ## CLI Usage
 
@@ -148,8 +151,9 @@ When a run is started from SMILES, an RDKit force field (via the morfeus library
 ## Troubleshooting
 - Fairchem/UMA: ensure network access for model downloads and optionally set or provide
 `huggingface_token` (e.g., via a token file) to access the UMA model family.
-- ORB-v3: models are downloaded automatically on first use. To enable D3
-  dispersion correction, set `"d3_correction": true` in the config (see
+- ORB-v3: models are downloaded automatically on first use.
+- D3 dispersion correction: set `"d3_correction": true` in the config
+  to enable DFT-D3(BJ) for either backend (see
   [docs/config.md](docs/config.md)).
 
 ## License

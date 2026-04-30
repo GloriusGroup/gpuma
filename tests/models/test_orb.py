@@ -14,7 +14,7 @@ from conftest import DEVICE, requires_gpu
 
 from .conftest import METHANE
 
-TARGET_GPU = 3
+TARGET_GPU = 1
 
 
 class TestOrbCalculator:
@@ -122,7 +122,7 @@ class TestGpuDevicePlacement:
 
     @requires_gpu
     def test_orb_calculator_on_cuda3(self):
-        """ORB calculator can be placed on a specific GPU (cuda:3)."""
+        """ORB calculator can be placed on a specific non-default GPU."""
         if torch.cuda.device_count() <= TARGET_GPU:
             pytest.skip(f"GPU {TARGET_GPU} not available")
         config = Config({

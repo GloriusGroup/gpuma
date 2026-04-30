@@ -12,7 +12,9 @@ based on machine-learning interatomic potentials (MLIPs).
 Two model backends are supported out of the box:
 
 - **Fairchem UMA** ([UMA/OMol25](https://arxiv.org/abs/2505.08762)) — the default backend.
-- **ORB-v3** ([orbital-materials/orb-models](https://github.com/orbital-materials/orb-models)) — included in core dependencies, with optional D3 dispersion correction.
+- **ORB-v3** ([orbital-materials/orb-models](https://github.com/orbital-materials/orb-models)) — included in core dependencies.
+
+Both backends support optional DFT-D3(BJ) dispersion correction.
 
 GPUMA is especially designed for batch optimizations of many structures (conformer ensembles, datasets) on GPU,
 ensuring efficient parallelization and maximum GPU utilization by leveraging the [torch-sim library](https://arxiv.org/abs/2508.06628).
@@ -127,8 +129,9 @@ When a run is started from SMILES, an RDKit force field (via the morfeus library
 - Fairchem/UMA: ensure network access for model downloads and optionally set or provide
 `huggingface_token` (e.g., via a token file) to access the UMA model family.
 - ORB-v3: set `"model_type": "orb"` in the `model` section of your config.
-  Enable D3 dispersion correction with `"d3_correction": true`
-  (see [Configuration](config.md)).
+- D3 dispersion correction: enable with `"d3_correction": true` in the
+  config — works for both ORB and Fairchem/UMA models (see
+  [Configuration](config.md)).
 
 ## License
 MIT License (see LICENSE)

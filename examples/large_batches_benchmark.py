@@ -2,7 +2,10 @@
 """Benchmark: Large-scale batch optimization across models.
 
 Compares Fairchem UMA (small v1.1, small v1.2, medium) and ORB-v3
-(direct and conservative) on a ~4000-structure molecucllar dataset.
+(direct and conservative) on a ~4000-structure molecular dataset.
+Each model is also benchmarked with DFT-D3(BJ, PBE) dispersion
+correction enabled (via torch-sim's ``D3DispersionModel`` for UMA and
+orb-models' native ``D3SumModel`` for ORB-v3).
 Results are saved as a CSV file.
 """
 
@@ -21,6 +24,13 @@ OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "example_output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 FORCE_CRITERIA = [5e-1, 1e-1, 5e-2, 1e-2]
+# Each (label, overrides) pair becomes a multiplicative axis on every base model.
+# The "no D3" entry runs the model as-is; the "D3 PBE/BJ" entry enables
+# torch-sim's D3DispersionModel (UMA) or orb-models' D3SumModel (ORB).
+D3_VARIANTS = [
+    ("", {"d3_correction": False}),
+    (" + D3(PBE/BJ)", {"d3_correction": True, "d3_functional": "PBE", "d3_damping": "BJ"}),
+]
 BASE_MODELS = [
     {
         "name": "Fairchem UMA-s-1p1",
@@ -54,22 +64,26 @@ BASE_MODELS = [
     },
 ]
 
-# Expand each model with every force convergence criterion
+# Expand each model with every (D3 variant) × (force convergence criterion).
 MODELS = []
 for _base in BASE_MODELS:
-    for _fc in FORCE_CRITERIA:
-        _label = f"{_fc:.0e}".replace("+", "").replace("-0", "-")
-        MODELS.append(
-            {
-                "name": f"{_base['name']} (fconv={_fc})",
-                "config_file": _base["config_file"],
-                "overrides": {
-                    **_base["overrides"],
-                    "optimization": {"force_convergence_criterion": _fc},
-                },
-                "output": f"{_base['output_prefix']}_fconv{_label}.xyz",
-            }
-        )
+    for _d3_label, _d3_over in D3_VARIANTS:
+        for _fc in FORCE_CRITERIA:
+            _fc_label = f"{_fc:.0e}".replace("+", "").replace("-0", "-")
+            _d3_suffix = "_d3" if _d3_over.get("d3_correction") else "_nod3"
+            _model_over = {**_base["overrides"].get("model", {}), **_d3_over}
+            MODELS.append(
+                {
+                    "name": f"{_base['name']}{_d3_label} (fconv={_fc})",
+                    "config_file": _base["config_file"],
+                    "overrides": {
+                        **_base["overrides"],
+                        "model": _model_over,
+                        "optimization": {"force_convergence_criterion": _fc},
+                    },
+                    "output": f"{_base['output_prefix']}{_d3_suffix}_fconv{_fc_label}.xyz",
+                }
+            )
 
 CSV_FIELDS = [
     "model",

@@ -19,16 +19,16 @@ classifiers = [
 
 dependencies = [
   "ase==3.27.0",
-  "torch-sim-atomistic==0.5.2",
+  "torch-sim-atomistic==0.6.0",
   "fairchem-core==2.18.0",
   "morfeus-ml==0.8.0",
   "rdkit==2025.9.3",
-  "tables==3.10.2",
+  "tables==3.11.1",
   "scipy==1.17.1",
   "hf_xet==1.2.0",
   "pyyaml==6.0.3",
   "orb-models==0.6.1",
-  "nvalchemi-toolkit-ops==0.2.0"
+  "nvalchemi-toolkit-ops==0.3.1"
 ]
 
 [project.optional-dependencies]

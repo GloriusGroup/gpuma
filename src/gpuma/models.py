@@ -16,8 +16,14 @@ Supported backends
 - **Fairchem** (``model_type="fairchem"`` or ``"uma"``): Uses
   ``fairchem-core`` and ``torch-sim-atomistic``.
 - **ORB-v3** (``model_type="orb"`` or ``"orb-v3"``): Uses the
-  ``orb-models`` package.  Optional D3 dispersion correction can be
-  enabled via ``config.model.d3_correction = True``.
+  ``orb-models`` package.
+
+DFT-D3(BJ) dispersion correction can be enabled for both backends via
+``config.model.d3_correction = True``.  ORB models use orb-models'
+native ``D3SumModel``; Fairchem/UMA models are layered with torch-sim's
+``D3DispersionModel`` (added in torch-sim 0.6.0) via ``SumModel`` for
+the batch path and via a thin ASE wrapper for the single-structure path.
+Both share the same ``nvalchemiops`` GPU kernel underneath.
 """
 
 from __future__ import annotations
@@ -28,6 +34,25 @@ from pathlib import Path
 from typing import Any
 
 import torch
+
+# nvalchemiops 0.3.x split torch-dependent symbols out of the warp-only modules
+# but orb-models 0.6.x still imports from the old paths.  Apply two shims so
+# the legacy imports succeed until orb-models is updated.
+import sys as _sys
+
+import nvalchemiops.neighbors.neighbor_utils as _warp_nu
+
+if not hasattr(_warp_nu, "get_neighbor_list_from_neighbor_matrix"):
+    from nvalchemiops.torch.neighbors.neighbor_utils import (
+        get_neighbor_list_from_neighbor_matrix,
+    )
+
+    _warp_nu.get_neighbor_list_from_neighbor_matrix = get_neighbor_list_from_neighbor_matrix
+
+if "nvalchemiops.interactions.dispersion.dftd3" not in _sys.modules:
+    from nvalchemiops.torch.interactions.dispersion import _dftd3
+
+    _sys.modules["nvalchemiops.interactions.dispersion.dftd3"] = _dftd3
 
 from .config import Config, resolve_model_type
 from .decorators import time_it
@@ -192,6 +217,118 @@ def _verify_model_path(config: Config) -> Path | None:
 
 
 # ---------------------------------------------------------------------------
+# D3 dispersion correction (Fairchem)
+# ---------------------------------------------------------------------------
+
+
+def _build_d3_dispersion_model(
+    config: Config,
+    device: torch.device,
+    dtype: torch.dtype,
+    *,
+    compute_stress: bool,
+):
+    """Construct a torch-sim ``D3DispersionModel`` from the config.
+
+    Reuses orb-models' bundled D3 reference-data file and BJ damping
+    parameter table so we don't duplicate them inside gpuma.
+    """
+    from orb_models.forcefield.inference.d3_model import AlchemiDFTD3  # type: ignore
+    from torch_sim.models.dispersion import D3DispersionModel  # type: ignore
+
+    functional = str(config.model.d3_functional)
+    damping = str(config.model.d3_damping)
+    coeffs = AlchemiDFTD3.get_d3_coefficients(functional, damping)
+    d3_params = AlchemiDFTD3.load_d3_parameters().to(device=device, dtype=dtype)
+    logger.info(
+        "Applying D3 dispersion correction to Fairchem (functional=%s, damping=%s)",
+        functional,
+        damping,
+    )
+    return D3DispersionModel(
+        a1=coeffs["a1"],
+        a2=coeffs["a2"],
+        s8=coeffs["s8"],
+        s6=coeffs["s6"],
+        d3_params=d3_params,
+        device=device,
+        dtype=dtype,
+        compute_forces=True,
+        compute_stress=compute_stress,
+    )
+
+
+class _FairchemD3Calculator:
+    """Thin ASE-style wrapper that adds D3 corrections to a Fairchem calculator.
+
+    We delegate to the underlying ``FAIRChemCalculator`` for the ML
+    energy/forces and add the ``D3DispersionModel`` contributions on top.
+    Behaves like an ASE calculator for single-structure use.
+    """
+
+    def __init__(self, fairchem_calc: Any, d3_model: Any, device: torch.device) -> None:
+        self._fairchem = fairchem_calc
+        self._d3_model = d3_model
+        self._device = device
+        self.implemented_properties = ("energy", "forces")
+        self.results: dict[str, Any] = {}
+
+    def calculate(
+        self,
+        atoms: Any = None,
+        properties: tuple[str, ...] = ("energy", "forces"),
+        system_changes: Any = None,
+    ) -> None:
+        """Run Fairchem then add D3 contributions to energy and forces."""
+        import numpy as np
+        from ase.calculators.calculator import all_changes
+        from torch_sim.io import atoms_to_state  # type: ignore
+
+        target = atoms if atoms is not None else getattr(self._fairchem, "atoms", None)
+        if target is None:
+            raise ValueError("FairchemD3Calculator.calculate requires an Atoms object")
+
+        self._fairchem.calculate(
+            atoms=target,
+            properties=list(properties),
+            system_changes=system_changes or all_changes,
+        )
+        e_ml = float(self._fairchem.results["energy"])
+        f_ml = np.asarray(self._fairchem.results["forces"], dtype=float)
+
+        state = atoms_to_state(target, device=self._device, dtype=self._d3_model.dtype)
+        with torch.no_grad():
+            d3_out = self._d3_model.forward(state)
+        e_d3 = float(d3_out["energy"][0].item())
+        f_d3 = d3_out["forces"].detach().cpu().numpy()
+
+        self.results = {"energy": e_ml + e_d3, "forces": f_ml + f_d3}
+
+    def get_potential_energy(
+        self, atoms: Any = None, force_consistent: bool = False
+    ) -> float:
+        """ASE-style accessor: trigger calculation and return the energy."""
+        self.calculate(atoms=atoms, properties=("energy", "forces"))
+        return float(self.results["energy"])
+
+    def get_forces(self, atoms: Any = None):
+        """ASE-style accessor: trigger calculation and return forces."""
+        self.calculate(atoms=atoms, properties=("energy", "forces"))
+        return self.results["forces"]
+
+    def get_property(self, name: str, atoms: Any = None, allow_calculation: bool = True):
+        """ASE-style accessor for a single property."""
+        if not allow_calculation and name not in self.results:
+            return None
+        self.calculate(atoms=atoms, properties=("energy", "forces"))
+        return self.results.get(name)
+
+    def calculation_required(self, atoms: Any, properties) -> bool:
+        """Always recompute; we don't cache against atoms identity here."""
+        return True
+
+
+# ---------------------------------------------------------------------------
 # Public API — two dispatcher functions
 # ---------------------------------------------------------------------------
 
@@ -262,7 +399,12 @@ def load_torchsim_model(config: Config):
 
 
 def _load_fairchem_calculator(config: Config) -> Any:
-    """Load a ``FAIRChemCalculator`` from a pretrained UMA model."""
+    """Load a ``FAIRChemCalculator`` from a pretrained UMA model.
+
+    When ``config.model.d3_correction`` is True the calculator is wrapped
+    with :class:`_FairchemD3Calculator`, which adds DFT-D3(BJ) energy and
+    force contributions on top of every prediction.
+    """
     from fairchem.core import FAIRChemCalculator, pretrained_mlip  # type: ignore
 
     _load_hf_token_to_env(config)
@@ -271,18 +413,31 @@ def _load_fairchem_calculator(config: Config) -> Any:
     model_path = _verify_model_path(config)
     if model_path:
         predictor = pretrained_mlip.load_predict_unit(path=model_path, device=backend_device)
-        return FAIRChemCalculator(predict_unit=predictor, task_name="omol")
+        calc = FAIRChemCalculator(predict_unit=predictor, task_name="omol")
+    else:
+        model_name, model_cache_dir = _verify_model_name_and_cache_dir(config)
+        kwargs: dict = {"device": backend_device}
+        if model_cache_dir:
+            kwargs["cache_dir"] = str(model_cache_dir)
+        predictor = pretrained_mlip.get_predict_unit(model_name, **kwargs)
+        calc = FAIRChemCalculator(predict_unit=predictor, task_name="omol")
 
-    model_name, model_cache_dir = _verify_model_name_and_cache_dir(config)
-    kwargs: dict = {"device": backend_device}
-    if model_cache_dir:
-        kwargs["cache_dir"] = str(model_cache_dir)
-    predictor = pretrained_mlip.get_predict_unit(model_name, **kwargs)
-    return FAIRChemCalculator(predict_unit=predictor, task_name="omol")
+    if config.model.d3_correction:
+        torch_device = _device_for_torch(str(config.technical.device))
+        d3_model = _build_d3_dispersion_model(
+            config, torch_device, torch.float64, compute_stress=False
+        )
+        return _FairchemD3Calculator(calc, d3_model, torch_device)
+    return calc
 
 
 def _load_fairchem_torchsim(config: Config) -> Any:
-    """Load a ``FairChemModel`` for torch-sim batch optimization."""
+    """Load a ``FairChemModel`` for torch-sim batch optimization.
+
+    When ``config.model.d3_correction`` is True the model is wrapped with
+    :class:`torch_sim.models.interface.SumModel` to add DFT-D3(BJ)
+    contributions on top of UMA predictions.
+    """
     from torch_sim.models.fairchem import FairChemModel  # type: ignore
 
     _load_hf_token_to_env(config)
@@ -295,13 +450,23 @@ def _load_fairchem_torchsim(config: Config) -> Any:
     torch_device = torch.device(backend_device)
 
     if model_path:
-        return FairChemModel(model=model_path, task_name="omol", device=torch_device)
-    return FairChemModel(
-        model=model_name,
-        model_cache_dir=model_cache_dir,
-        task_name="omol",
-        device=torch_device,
-    )
+        uma_model = FairChemModel(model=model_path, task_name="omol", device=torch_device)
+    else:
+        uma_model = FairChemModel(
+            model=model_name,
+            model_cache_dir=model_cache_dir,
+            task_name="omol",
+            device=torch_device,
+        )
+
+    if config.model.d3_correction:
+        from torch_sim.models.interface import SumModel  # type: ignore
+
+        d3_model = _build_d3_dispersion_model(
+            config, torch_device, uma_model.dtype, compute_stress=uma_model.compute_stress
+        )
+        return SumModel(uma_model, d3_model)
+    return uma_model
 
 
 # ---------------------------------------------------------------------------

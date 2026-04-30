@@ -24,7 +24,7 @@
     "huggingface_token": null,
     "huggingface_token_file": null,
 
-    "d3_correction": false,
+    "d3_correction": true,
     "d3_functional": "PBE",
     "d3_damping": "BJ"
 
@@ -39,7 +39,7 @@
 
   "technical": {
 
-    "device": "cuda:3",
+    "device": "cuda:2",
 
     "max_memory_padding": 0.95,
     "memory_scaling_factor": 1.3,

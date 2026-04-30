@@ -37,7 +37,11 @@ Unknown fields are preserved. **Always use a config file for CLI and API calls.*
     "model_cache_dir": null,
 
     "huggingface_token": null,
-    "huggingface_token_file": "/home/hf_secret"
+    "huggingface_token_file": "/home/hf_secret",
+
+    "d3_correction": false,
+    "d3_functional": "PBE",
+    "d3_damping": "BJ"
   },
 
   "conformer_generation": {
@@ -71,13 +75,35 @@ Unknown fields are preserved. **Always use a config file for CLI and API calls.*
 }
 ```
 
-## ORB-v3 with D3 Dispersion Correction
+## D3 Dispersion Correction
+
+DFT-D3(BJ) dispersion correction is supported for **both** ORB-v3 and
+Fairchem/UMA backends.  Internally ORB uses orb-models' native
+``D3SumModel`` and Fairchem uses torch-sim's ``D3DispersionModel``
+(via ``SumModel`` in batch mode); both share the same
+``nvalchemiops`` GPU kernel.
 
 ```json
 {
   "model": {
     "model_type": "orb",
     "model_name": "orb_v3_direct_omol",
+
+    "d3_correction": true,
+    "d3_functional": "PBE",
+    "d3_damping": "BJ"
+  },
+  "technical": {
+    "device": "cuda"
+  }
+}
+```
+
+```json
+{
+  "model": {
+    "model_type": "fairchem",
+    "model_name": "uma-s-1p2",
 
     "d3_correction": true,
     "d3_functional": "PBE",
@@ -112,6 +138,10 @@ model:
 
   huggingface_token: null
   huggingface_token_file: /home/hf_secret
+
+  d3_correction: false
+  d3_functional: PBE
+  d3_damping: BJ
 
 conformer_generation:
   max_num_conformers: 20
@@ -153,9 +183,9 @@ technical:
 | `model_cache_dir` | `null` | Directory for cached model downloads |
 | `huggingface_token` | `null` | HuggingFace token for model access |
 | `huggingface_token_file` | `null` | File path to read the HF token from |
-| `d3_correction` | `false` | Enable D3 dispersion correction (ORB models only) |
-| `d3_functional` | `"PBE"` | DFT functional for D3 correction |
-| `d3_damping` | `"BJ"` | Damping scheme for D3 correction |
+| `d3_correction` | `false` | Enable D3 dispersion correction. Supported for both ORB and Fairchem/UMA |
+| `d3_functional` | `"PBE"` | DFT functional for D3 correction (BJ-damping table from orb-models) |
+| `d3_damping` | `"BJ"` | Damping scheme for D3 correction (`"BJ"` or `"BJM"`) |
 
 ### `conformer_generation`
 
@@ -207,7 +237,7 @@ Use the **underscored** form as `model_name`.
 | `orb_v3_conservative_20_mpa` | ORB-v3 conservative, 20-layer mpa |
 | `orb_v3_conservative_inf_mpa` | ORB-v3 conservative, inf mpa |
 
-> D3 dispersion correction can be enabled for any ORB model with `d3_correction: true`.
+> D3 dispersion correction can be enabled for any ORB or Fairchem/UMA model with `d3_correction: true`.
 
 These model names are also available programmatically as
 `gpuma.AVAILABLE_FAIRCHEM_MODELS` and `gpuma.AVAILABLE_ORB_MODELS`.
@@ -217,6 +247,7 @@ These model names are also available programmatically as
 See the `examples/` folder for:
 - Single optimization (`example_single_optimization.py`)
 - Ensemble / batch optimization (`example_ensemble_optimization.py`)
+- Dispersion (D3) correction with both backends (`example_dispersion.py`)
 - Large-scale batch optimization (`large_batches_benchmark.py`)
 
 The example configs are sanitized (no tokens in plain text).

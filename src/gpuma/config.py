@@ -40,7 +40,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "model_cache_dir": None,
         "huggingface_token": None,
         "huggingface_token_file": None,
-        # D3 dispersion correction (ORB models only)
+        # D3 dispersion correction (supported for both ORB and Fairchem/UMA)
         "d3_correction": False,
         "d3_functional": "PBE",
         "d3_damping": "BJ",
