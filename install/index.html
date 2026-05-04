@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../logo_round.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
     
     
       
@@ -671,7 +671,8 @@ present and will not replace it:</p>
 <p>ORB-v3 models are included in the standard <code>gpuma</code> installation. To use them,
 set <code>"model_type": "orb"</code> and <code>"model_name": "orb_v3_direct_omol"</code> in your
 configuration file (see <a href="../config/">Configuration</a> and <code>examples/config_orb.json</code>).</p>
-<p>D3 dispersion correction can be enabled by setting <code>"d3_correction": true</code> in the config.</p>
+<p>D3 dispersion correction can be enabled by setting <code>"d3_correction": true</code> in
+the config.  This is supported for <strong>both</strong> ORB-v3 and Fairchem/UMA models.</p>
 <blockquote>
 <p>⚠️ <strong>Required for UMA models:</strong></br>
 To access the UMA models on Hugging Face, <strong>you must provide a token</strong> either via the <code>HUGGINGFACE_TOKEN</code> environment variable or via the config (direct token string or path to a file containing the token).</p>

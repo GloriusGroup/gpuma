@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="logo_round.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
     
     
       
@@ -737,8 +737,9 @@ based on machine-learning interatomic potentials (MLIPs).</p>
 <p>Two model backends are supported out of the box:</p>
 <ul>
 <li><strong>Fairchem UMA</strong> (<a href="https://arxiv.org/abs/2505.08762">UMA/OMol25</a>) — the default backend.</li>
-<li><strong>ORB-v3</strong> (<a href="https://github.com/orbital-materials/orb-models">orbital-materials/orb-models</a>) — included in core dependencies, with optional D3 dispersion correction.</li>
+<li><strong>ORB-v3</strong> (<a href="https://github.com/orbital-materials/orb-models">orbital-materials/orb-models</a>) — included in core dependencies.</li>
 </ul>
+<p>Both backends support optional DFT-D3(BJ) dispersion correction.</p>
 <p>GPUMA is especially designed for batch optimizations of many structures (conformer ensembles, datasets) on GPU,
 ensuring efficient parallelization and maximum GPU utilization by leveraging the <a href="https://arxiv.org/abs/2508.06628">torch-sim library</a>.
 It wraps model backends and torch-sim functionality to provide both a simple command-line
@@ -832,9 +833,10 @@ config file (JSON or YAML) and reference it in all CLI calls.</p>
 <li>Missing libraries: install optional dependencies like <code>pyyaml</code> if you use YAML configs.</li>
 <li>Fairchem/UMA: ensure network access for model downloads and optionally set or provide
 <code>huggingface_token</code> (e.g., via a token file) to access the UMA model family.</li>
-<li>ORB-v3: set <code>"model_type": "orb"</code> in the <code>model</code> section of your config.
-  Enable D3 dispersion correction with <code>"d3_correction": true</code>
-  (see <a href="config/">Configuration</a>).</li>
+<li>ORB-v3: set <code>"model_type": "orb"</code> in the <code>model</code> section of your config.</li>
+<li>D3 dispersion correction: enable with <code>"d3_correction": true</code> in the
+  config — works for both ORB and Fairchem/UMA models (see
+  <a href="config/">Configuration</a>).</li>
 </ul>
 <h2 id="license">License</h2>
 <p>MIT License (see LICENSE)</p>
