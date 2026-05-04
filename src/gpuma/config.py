@@ -31,7 +31,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "multiplicity": 1,
         "force_convergence_criterion": 5e-2,
         "energy_convergence_criterion": None,
-        "steps_between_swaps": 3,
     },
     "model": {
         "model_type": "fairchem",
@@ -52,8 +51,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "technical": {
         "device": default_device,
         "max_memory_padding": 0.95,
-        "memory_scaling_factor": 1.6,
+        "memory_scaling_factor": 1.75,
         "max_atoms_to_try": 100_000,
+        "steps_between_swaps": 1,
         "logging_level": "INFO",
     },
 }

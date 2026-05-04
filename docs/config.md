@@ -25,8 +25,7 @@ Unknown fields are preserved. **Always use a config file for CLI and API calls.*
     "multiplicity": 1,
 
     "force_convergence_criterion": 5e-2,
-    "energy_convergence_criterion": null,
-    "steps_between_swaps": 3
+    "energy_convergence_criterion": null
   },
 
   "model": {
@@ -55,6 +54,7 @@ Unknown fields are preserved. **Always use a config file for CLI and API calls.*
     "memory_scaling_factor": 1.6,
 
     "max_atoms_to_try": 100000,
+    "steps_between_swaps": 1,
 
     "logging_level": "INFO"
   }
@@ -127,7 +127,6 @@ optimization:
 
   force_convergence_criterion: 5.0e-2
   energy_convergence_criterion: null
-  steps_between_swaps: 3
 
 model:
   model_type: fairchem
@@ -153,6 +152,7 @@ technical:
   memory_scaling_factor: 1.6
 
   max_atoms_to_try: 100000
+  steps_between_swaps: 1
 
   logging_level: INFO
 ```
@@ -171,7 +171,6 @@ technical:
 | `multiplicity` | `1` | Spin multiplicity of the system |
 | `force_convergence_criterion` | `5e-2` | Force convergence threshold (eV/A). Used for both single and batch modes |
 | `energy_convergence_criterion` | `null` | Energy convergence threshold. Batch mode only; force takes precedence if both set |
-| `steps_between_swaps` | `3` | Steps between batch swaps in the autobatcher. Lower = more frequent swaps |
 
 ### `model`
 
@@ -202,6 +201,7 @@ technical:
 | `max_memory_padding` | `0.95` | Fraction of GPU memory to use for batch optimization. Lower = more headroom |
 | `memory_scaling_factor` | `1.6` | Factor to multiply batch size by during autobatcher calibration. Larger = faster calibration, smaller = more accurate limit. Must be > 1 |
 | `max_atoms_to_try` | `100000` | Maximum atoms for autobatcher calibration probe |
+| `steps_between_swaps` | `1` | Steps between batch swaps in the in-flight autobatcher. Lower = more frequent swaps; `1` is fastest on this codebase's screenings (uma-s/uma-m/orb), monotonically slower at higher values |
 | `logging_level` | `"INFO"` | Logging verbosity: `"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"` |
 
 > You can also control the GPU with the `CUDA_VISIBLE_DEVICES` environment variable.

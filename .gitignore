@@ -139,6 +139,7 @@ Thumbs.db
 torch-sim/
 /examples/models/
 examples/example_output/*
+examples/screening_results/
 
 uv.lock
 /.claude/
