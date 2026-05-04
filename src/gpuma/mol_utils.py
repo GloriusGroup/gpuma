@@ -154,6 +154,8 @@ def smiles_to_conformer_ensemble(
             "Required dependencies not found. Please install with: "
             "uv pip install 'gpuma' or install 'morfeus-ml rdkit'"
         ) from exc
+    except ValueError:
+        raise
     except Exception as exc:  # pragma: no cover - defensive
         raise ValueError(f"Failed to generate conformers from SMILES '{smiles}': {exc}") from exc
 

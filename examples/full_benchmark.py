@@ -14,9 +14,8 @@ from dataclasses import dataclass
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import gpuma
-from gpuma import capture_timings
 from gpuma.config import load_config_from_file
-
+from gpuma.decorators import capture_timings
 
 _HERE = os.path.dirname(__file__)
 DEFAULT_INPUT  = os.path.join(_HERE, "example_input_xyzs", "many_structures_4k.xyz")

@@ -27,7 +27,7 @@ from .config import (
     resolve_model_type,
     save_config_to_file,
 )
-from .decorators import TimingCapture, capture_timings, time_it, timed_block
+from .decorators import time_it, timed_block
 from .io_handler import (
     read_multi_xyz,
     read_xyz,
@@ -82,7 +82,4 @@ __all__ = [
     # Decorators
     "time_it",
     "timed_block",
-    # Profiling helpers (benchmark / debug)
-    "capture_timings",
-    "TimingCapture",
 ]

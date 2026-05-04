@@ -166,9 +166,14 @@ class _Section:
     def get_huggingface_token(self) -> str | None:
         """Return the HuggingFace token from this section if available.
 
-        The token is retrieved either directly from the configuration or from a
-        file path specified in ``huggingface_token_file``.
+        Only valid on the ``model`` section; raises :class:`AttributeError`
+        otherwise. The token is retrieved either directly from the configuration
+        or from a file path specified in ``huggingface_token_file``.
         """
+        if self._path != ["model"]:
+            raise AttributeError(
+                "get_huggingface_token() is only valid on the 'model' section"
+            )
         opt = self._node()
         token = opt.get("huggingface_token")
         if token:

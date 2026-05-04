@@ -372,6 +372,10 @@ def save_xyz_file(structure: Structure, file_path: str) -> None:
     for symbol, coord in zip(structure.symbols, structure.coordinates, strict=True):
         lines.append(f"{symbol} {coord[0]:.6f} {coord[1]:.6f} {coord[2]:.6f}")
 
+    parent = os.path.dirname(file_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
     with open(file_path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines))
         fh.write("\n")
@@ -413,9 +417,14 @@ def save_multi_xyz(
         for symbol, coord in zip(struct.symbols, struct.coordinates, strict=True):
             lines.append(f"{symbol} {coord[0]:.6f} {coord[1]:.6f} {coord[2]:.6f}")
 
+    parent = os.path.dirname(file_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
     with open(file_path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines))
         fh.write("\n")
+
 
 def save_as_single_xyz_files(
     structures: list[Structure], output_dir: str, comments: list[str] | None = None
@@ -449,16 +458,3 @@ def save_as_single_xyz_files(
             )
         file_path = os.path.join(output_dir, f"structure_{idx + 1:0{width}d}.xyz")
         save_xyz_file(struct, file_path)
-
-
-def file_exists(file_path: str) -> bool:
-    """Check if a file exists at the given path.
-
-    Args:
-        file_path (str): The path to the file.
-
-    Returns:
-        bool: True if the file exists, False otherwise.
-
-    """
-    return os.path.isfile(file_path)

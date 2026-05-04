@@ -20,13 +20,17 @@ from typing import Any
 from ase import Atoms
 from ase.optimize import BFGS, FIRE, LBFGS
 
-from .config import Config, load_config_from_file, resolve_model_type
+from .config import DEFAULT_CONFIG, Config, load_config_from_file, resolve_model_type
 from .decorators import timed_block
 from .logging_utils import log_optimization_summary
 from .models import _parse_device_string, load_calculator, load_torchsim_model
 from .structure import Structure
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_FORCE_CRITERION: float = float(
+    DEFAULT_CONFIG["optimization"]["force_convergence_criterion"]
+)
 
 # ---------------------------------------------------------------------------
 # Model caching
@@ -150,8 +154,9 @@ def _resolve_force_criterion(config: Config) -> float:
     """Determine the force convergence threshold for single-structure optimization.
 
     Single-structure optimization only supports force convergence. If only an
-    energy criterion is set, a warning is logged and the default force threshold
-    (0.05 eV/A) is used.
+    energy criterion is set, a warning is logged and the package default force
+    threshold (``DEFAULT_CONFIG["optimization"]["force_convergence_criterion"]``)
+    is used.
     """
     force_crit = config.optimization.force_convergence_criterion
     energy_crit = config.optimization.energy_convergence_criterion
@@ -168,9 +173,10 @@ def _resolve_force_criterion(config: Config) -> float:
         logger.warning(
             "Energy convergence criterion requested but only force convergence "
             "is supported for single structure optimization. "
-            "Falling back to default force criterion (0.05)."
+            "Falling back to default force criterion (%s).",
+            _DEFAULT_FORCE_CRITERION,
         )
-    return 0.05
+    return _DEFAULT_FORCE_CRITERION
 
 
 def _resolve_batch_convergence(config: Config):
@@ -194,7 +200,7 @@ def _resolve_batch_convergence(config: Config):
         return torch_sim.generate_force_convergence_fn(force_tol=force_crit)
     if energy_crit is not None:
         return torch_sim.generate_energy_convergence_fn(energy_tol=energy_crit)
-    return torch_sim.generate_force_convergence_fn(force_tol=0.05)
+    return torch_sim.generate_force_convergence_fn(force_tol=_DEFAULT_FORCE_CRITERION)
 
 
 _ASE_OPTIMIZER_MAP = {
@@ -450,13 +456,11 @@ def _optimize_batch(
     max_atoms_to_try = int(config.technical.max_atoms_to_try)
     steps_between_swaps = int(config.technical.steps_between_swaps)
 
-    memory_scales_with = "n_edges"
-
     effective_max_atoms = min(batched_state.n_atoms, max_atoms_to_try)
     with timed_block("Memory estimation"):
         batcher = InFlightAutoBatcher(
             model,
-            memory_scales_with=memory_scales_with,
+            memory_scales_with="n_edges",
             memory_scaling_factor=memory_scaling_factor,
             max_memory_padding=max_memory_padding,
             max_atoms_to_try=effective_max_atoms,
@@ -464,9 +468,8 @@ def _optimize_batch(
 
         batcher.load_states(batched_state)
         logger.debug(
-            "Autobatcher params: memory_scales_with=%s, max_memory_scaler=%.0f, "
+            "Autobatcher params: memory_scales_with=n_edges, max_memory_scaler=%.0f, "
             "max_memory_padding=%.2f, max_atoms=%d, steps_between_swaps=%d",
-            memory_scales_with,
             batcher.max_memory_scaler,
             max_memory_padding,
             effective_max_atoms,
@@ -494,7 +497,8 @@ def _optimize_batch(
             charge=int(final_state.charge[i].item()),
             multiplicity=int(final_state.spin[i].item()),
             comment=(
-                f"Optimized with model {getattr(model, 'model_name', None) or ''} in batch mode"
+                f"Optimized with model "
+                f"{getattr(model, 'model_name', None) or 'unknown'} in batch mode"
             ),
         )
         results.append(struct)

@@ -7,7 +7,7 @@ The configuration is organized into four top-level sections:
 | `optimization` | Batch mode, convergence criteria, charge & multiplicity |
 | `model` | Model backend, name, checkpoints, tokens, D3 correction |
 | `conformer_generation` | Conformer count and random seed |
-| `technical` | Device selection, memory padding, logging |
+| `technical` | Device selection, memory & autobatcher knobs, logging |
 
 Unknown fields are preserved. **Always use a config file for CLI and API calls.**
 
@@ -51,7 +51,7 @@ Unknown fields are preserved. **Always use a config file for CLI and API calls.*
   "technical": {
     "device": "cuda",
     "max_memory_padding": 0.95,
-    "memory_scaling_factor": 1.6,
+    "memory_scaling_factor": 1.75,
 
     "max_atoms_to_try": 100000,
     "steps_between_swaps": 1,
@@ -149,7 +149,7 @@ conformer_generation:
 technical:
   device: cuda
   max_memory_padding: 0.95
-  memory_scaling_factor: 1.6
+  memory_scaling_factor: 1.75
 
   max_atoms_to_try: 100000
   steps_between_swaps: 1
@@ -198,10 +198,10 @@ technical:
 | Parameter | Default | Description |
 |---|---|---|
 | `device` | `"cuda"` | `"cpu"`, `"cuda"`, or `"cuda:N"` (e.g. `"cuda:0"`). Falls back to `cuda:0` if the requested index doesn't exist |
-| `max_memory_padding` | `0.95` | Fraction of GPU memory to use for batch optimization. Lower = more headroom |
-| `memory_scaling_factor` | `1.6` | Factor to multiply batch size by during autobatcher calibration. Larger = faster calibration, smaller = more accurate limit. Must be > 1 |
-| `max_atoms_to_try` | `100000` | Maximum atoms for autobatcher calibration probe |
-| `steps_between_swaps` | `1` | Steps between batch swaps in the in-flight autobatcher. Lower = more frequent swaps; `1` is fastest on this codebase's screenings (uma-s/uma-m/orb), monotonically slower at higher values |
+| `max_memory_padding` | `0.95` | Fraction of GPU memory the autobatcher is allowed to fill during calibration. Lower = more headroom, smaller batches |
+| `memory_scaling_factor` | `1.75` | Factor by which the autobatcher grows the probe size during calibration. Larger = faster calibration but coarser final batch size; smaller = slower but tighter. Must be > 1 |
+| `max_atoms_to_try` | `100000` | Upper bound on the autobatcher's calibration probe size (atoms) |
+| `steps_between_swaps` | `1` | Optimization steps between batch swaps in the in-flight autobatcher. `1` is fastest on this codebase's screenings (uma-s/uma-m/orb); higher values are monotonically slower |
 | `logging_level` | `"INFO"` | Logging verbosity: `"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"` |
 
 > You can also control the GPU with the `CUDA_VISIBLE_DEVICES` environment variable.
@@ -248,6 +248,6 @@ See the `examples/` folder for:
 - Single optimization (`example_single_optimization.py`)
 - Ensemble / batch optimization (`example_ensemble_optimization.py`)
 - Dispersion (D3) correction with both backends (`example_dispersion.py`)
-- Large-scale batch optimization (`large_batches_benchmark.py`)
+- Full multi-axis benchmark across models / optimizers / convergence (`full_benchmark.py`)
 
 The example configs are sanitized (no tokens in plain text).

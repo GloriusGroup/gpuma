@@ -9,9 +9,10 @@ ensembles of conformers.
 
 from __future__ import annotations
 
+import os
+
 from .config import Config, load_config_from_file
 from .io_handler import (
-    file_exists,
     read_multi_xyz,
     read_xyz,
     read_xyz_directory,
@@ -92,7 +93,7 @@ def optimize_single_xyz_file(
         ValueError: If the input file does not exist or if the read structure is not valid.
 
     """
-    if not file_exists(input_file):
+    if not os.path.isfile(input_file):
         raise ValueError(f"Input file {input_file} does not exist.")
     if config is None:
         config = load_config_from_file()
@@ -192,7 +193,7 @@ def optimize_batch_multi_xyz_file(
         ValueError: If the input file does not exist or if the read structures are not valid.
 
     """
-    if not file_exists(input_file):
+    if not os.path.isfile(input_file):
         raise ValueError(f"Input file {input_file} does not exist.")
 
     if config is None:

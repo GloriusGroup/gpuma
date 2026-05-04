@@ -417,15 +417,6 @@ def cmd_ensemble(args, config: Config) -> None:
     batch inference.
     """
     try:
-        if getattr(args, "charge", None) not in (None, 0) or getattr(
-            args, "multiplicity", None
-        ) not in (None, 1):
-            logger.warning(
-                "Non-neutral charges or spin multiplicities are currently "
-                "not supported in batch ensemble optimization; falling back "
-                "to neutral singlet (charge=0, multiplicity=1).",
-            )
-
         num_conf = args.conformers or config.conformer_generation.max_num_conformers
         logger.info("Generating %d conformers for SMILES: %s", num_conf, args.smiles)
         config.conformer_generation.max_num_conformers = num_conf
@@ -514,7 +505,7 @@ def cmd_convert(args, config: Config) -> None:
         sys.exit(1)
 
 
-def cmd_generate(args, config: Config) -> None:  # pylint: disable=unused-argument
+def cmd_generate(args, config: Config) -> None:
     """Handle conformer generation from SMILES.
 
     This command generates a conformer ensemble from a SMILES string without
@@ -606,7 +597,7 @@ def main(argv=None) -> int:
         parser.print_help()
         return 1
 
-    if args.command == "optimize" or args.command == "smiles":
+    if args.command in ("optimize", "smiles"):
         cmd_optimize(args, config)
     elif args.command == "ensemble":
         cmd_ensemble(args, config)

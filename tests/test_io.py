@@ -3,7 +3,6 @@
 import pytest
 
 from gpuma.io_handler import (
-    file_exists,
     read_multi_xyz,
     read_xyz,
     read_xyz_directory,
@@ -234,17 +233,6 @@ def test_smiles_to_xyz_with_multiplicity():
     """Multiplicity parameter is passed through to the structure."""
     s = smiles_to_xyz("C", multiplicity=3)
     assert s.multiplicity == 3
-
-
-# ---------------------------------------------------------------------------
-# file_exists
-# ---------------------------------------------------------------------------
-
-
-def test_file_exists():
-    """file_exists returns True for existing files, False otherwise."""
-    assert file_exists(str(SINGLE_XYZ)) is True
-    assert file_exists("/nonexistent/path.xyz") is False
 
 
 # ---------------------------------------------------------------------------
