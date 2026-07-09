@@ -10,6 +10,7 @@ import glob
 import logging
 import os
 import re
+from collections.abc import Callable
 
 from .mol_utils import (
     smiles_to_conformer_ensemble as _smiles_to_ensemble_util,
@@ -226,7 +227,10 @@ def natural_sort_key(filepath: str) -> list:
     ]
 
 def read_xyz_directory(
-    directory_path: str, charge: int = 0, multiplicity: int = 1, sort: bool | Callable[[str], list] = True,
+    directory_path: str,
+    charge: int = 0,
+    multiplicity: int = 1,
+    sort: bool | Callable[[str], list] = True,
 ) -> list[Structure]:
     """Read all XYZ files from a directory.
 
