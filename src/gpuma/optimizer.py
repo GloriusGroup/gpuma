@@ -488,6 +488,10 @@ def _optimize_batch(
 
     # Extract results
     final_atoms = final_state.to_atoms()
+    # The torch-sim model wrapper does not carry a ``model_name`` attribute, so
+    # resolve the name from the configuration (the source of truth used by the
+    # run summary) instead of the model object, which always read "unknown".
+    model_name = getattr(config.model, "model_name", None) or "unknown"
     results: list[Structure] = []
     for i, atoms in enumerate(final_atoms):
         struct = Structure(
@@ -496,10 +500,7 @@ def _optimize_batch(
             energy=float(final_state.energy[i].item()),
             charge=int(final_state.charge[i].item()),
             multiplicity=int(final_state.spin[i].item()),
-            comment=(
-                f"Optimized with model "
-                f"{getattr(model, 'model_name', None) or 'unknown'} in batch mode"
-            ),
+            comment=f"Optimized with model {model_name} in batch mode",
         )
         results.append(struct)
     return results
