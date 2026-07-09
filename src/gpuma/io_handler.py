@@ -9,6 +9,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
+import re
 
 from .mol_utils import (
     smiles_to_conformer_ensemble as _smiles_to_ensemble_util,
@@ -212,9 +213,20 @@ def read_multi_xyz(file_path: str, charge: int = 0, multiplicity: int = 1) -> li
 
     return structures
 
+def natural_sort_key(filepath: str) -> list:
+    """
+    Generate a sort key that orders strings with embedded numbers naturally.
+
+    E.g. 'mol_2.xyz' < 'mol_10.xyz' (unlike plain string sort).
+    """
+    filename = os.path.basename(filepath)
+    return [
+        int(text) if text.isdigit() else text.lower()
+        for text in re.split(r'(\d+)', filename)
+    ]
 
 def read_xyz_directory(
-    directory_path: str, charge: int = 0, multiplicity: int = 1
+    directory_path: str, charge: int = 0, multiplicity: int = 1, sort: bool | Callable[[str], list] = True,
 ) -> list[Structure]:
     """Read all XYZ files from a directory.
 
@@ -226,11 +238,19 @@ def read_xyz_directory(
         Optional total charge to set on all returned structures (default: ``0``).
     multiplicity:
         Optional spin multiplicity to set (default: ``1``).
+    sort:
+        Controls the order in which files are read. If ``True`` (default),
+        files are sorted in natural numerical order (e.g. ``mol_2.xyz``
+        before ``mol_10.xyz``). If ``False``, files are read in
+        OS-dependent order, which is not guaranteed and may vary between
+        runs or platforms. If a callable is provided, it is used as the
+        sort key instead (see :func:`sorted`).
 
     Returns
     -------
     list[Structure]
-        List of structures from all XYZ files in the directory.
+        List of structures from all XYZ files in the directory, in the
+        order determined by ``sort``.
 
     Raises
     ------
@@ -244,6 +264,13 @@ def read_xyz_directory(
         raise FileNotFoundError(f"Directory {directory_path} not found")
 
     xyz_files = glob.iglob(os.path.join(directory_path, "*.xyz"))
+
+    if sort is True:
+        xyz_files = sorted(xyz_files, key=natural_sort_key)
+    elif callable(sort):
+        xyz_files = sorted(xyz_files, key=sort)
+    else:
+        xyz_files = list(xyz_files)
 
     structures: list[Structure] = []
     found_any = False
