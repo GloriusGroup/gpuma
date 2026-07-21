@@ -17,11 +17,18 @@ present, everything falls back to RDKit on the CPU and results stay valid.
 
 Notes
 -----
-The GPU and CPU backends are not bit-identical. nvMolKit requires
-``useRandomCoords=True``, so the GPU path starts ETKDG from random coordinates
-rather than a distance-geometry guess. Both are valid ETKDGv3 embeddings, but
-a given molecule may land in a different conformer basin depending on backend.
-Pin ``config.technical.device`` if you need run-to-run comparability.
+Both backends minimize with **MMFF94** and neither falls back to another force
+field, so conformer energies are comparable across devices. Molecules without
+MMFF94 parameters (~2% of a typical library, e.g. some phosphine ligands) keep
+an unminimized conformer on both paths rather than being silently switched to
+UFF on one of them.
+
+The embeddings are not equivalent, however. The CPU path goes through morfeus,
+which builds parameters from a bare ``AllChem.EmbedParameters()`` and so runs
+plain distance geometry; the GPU path uses ETKDGv3 with
+``useRandomCoords=True`` as nvMolKit requires. A given molecule may therefore
+land in a different conformer basin depending on the device. Pin
+``config.technical.device`` if you need run-to-run comparability.
 """
 
 from __future__ import annotations
@@ -49,7 +56,9 @@ DEFAULT_SEED = -1
 #: RMSD threshold (Angstrom) for discarding duplicate conformers during embedding.
 DEFAULT_PRUNE_RMS = 0.35
 
-#: Max MMFF/UFF minimization iterations per conformer.
+#: Max MMFF94 minimization iterations per conformer. GPU backend only --
+#: morfeus does not expose an iteration limit, so the CPU path uses RDKit's
+#: default of 200.
 DEFAULT_MAX_ITERS = 200
 
 def _gpu_ids_from_device(device: str) -> list[int] | None:
@@ -153,29 +162,6 @@ def _to_structure(mol, conf_id: int, charge: int, multiplicity: int, smiles: str
         multiplicity=multiplicity,
         comment=f"Generated from SMILES: {smiles}",
     )
-
-
-def _minimize_cpu(mol, max_iters: int, n_threads: int) -> list[float]:
-    """Minimize every conformer of ``mol`` in place, returning per-conformer energies.
-
-    Falls back to UFF when MMFF94 lacks parameters for the molecule (roughly 2%
-    of a typical library -- e.g. some phosphine ligands). Returns an empty list
-    if neither force field applies, in which case the caller keeps conformer 0
-    unminimized rather than dropping the molecule.
-    """
-    from rdkit.Chem import AllChem
-
-    try:
-        if AllChem.MMFFHasAllMoleculeParams(mol):
-            res = AllChem.MMFFOptimizeMoleculeConfs(mol, maxIters=max_iters, numThreads=n_threads)
-        elif AllChem.UFFHasAllMoleculeParams(mol):
-            res = AllChem.UFFOptimizeMoleculeConfs(mol, maxIters=max_iters, numThreads=n_threads)
-        else:
-            return []
-    except Exception as exc:  # noqa: BLE001 - a bad force field must not kill the batch
-        logger.debug("minimization failed, keeping unminimized conformer: %s", exc)
-        return []
-    return [energy for _converged, energy in res]
 
 
 def _embed_cpu(prepared, n_confs_override, seed, prune_rms, multiplicity, n_threads):
@@ -297,8 +283,15 @@ def _embed_gpu(
             cids = [c.GetId() for c in mol.GetConformers()]
             energies = energies_by_mol.get(id(mol))
             if energies is None:
-                # No MMFF parameters -- minimize this one on the CPU.
-                energies = _minimize_cpu(mol, max_iters, n_threads=1)
+                # No MMFF94 parameters. Deliberately NOT falling back to UFF:
+                # the CPU backend (morfeus, optimize="MMFF94") has no such
+                # fallback either, and mixing force fields between backends
+                # would make their geometries incomparable. The conformer is
+                # kept unminimized, which is what morfeus does here too --
+                # except morfeus does it silently, hence the warning.
+                logger.warning(
+                    "no MMFF94 parameters for %s; keeping unminimized conformer", smiles
+                )
             best = (
                 cids[min(range(len(energies)), key=energies.__getitem__)] if energies else cids[0]
             )
