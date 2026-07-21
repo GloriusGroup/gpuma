@@ -443,6 +443,11 @@ def _generate(
         multiplicity = int(config.optimization.multiplicity)
     gpu_ids = _gpu_ids_from_device(str(config.technical.device))
 
+    # Mirrors the optimizer's "Optimization device" line. Logged before the
+    # attempt, so a later fallback warning tells you the GPU was tried and
+    # lost rather than never selected.
+    logger.info("Embedding device: %s", "CPU" if gpu_ids is None else "GPU")
+
     prepared = []
     results: list[list[Structure] | None] = [None] * len(smiles_list)
     for idx, smiles in enumerate(smiles_list):
