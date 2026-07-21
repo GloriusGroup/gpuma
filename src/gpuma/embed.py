@@ -1,19 +1,31 @@
 """Batched SMILES -> 3D structure generation, GPU-accelerated where available.
 
-This module replaces the per-molecule :func:`gpuma.mol_utils.smiles_to_structure`
-path for bulk workloads. Two things make it faster:
+This is the single SMILES-to-geometry path in gpuma. The per-molecule helpers
+in :mod:`gpuma.mol_utils` -- and therefore ``smiles_to_xyz``,
+``smiles_to_ensemble``, the API and the CLI -- delegate here.
 
-1. **Conformer budget.** The morfeus path generates 50-300 conformers per
-   molecule (chosen by rotatable-bond count), MMFF-minimizes every one, then
-   discards all but the lowest-energy one. This module generates a much smaller
-   budget, since only one conformer is ever consumed downstream.
-2. **Batching.** Conformer generation is submitted as a batch across molecules,
-   which is what the GPU backend (nvMolKit) needs to be worth using at all.
-   A per-molecule GPU call loses to CPU on launch overhead.
+Two public entry points, both batched:
 
-The backend follows ``config.technical.device`` like the rest of gpuma. The
-GPU path is optional: if nvMolKit is missing, broken, or no CUDA device is
-present, everything falls back to RDKit on the CPU and results stay valid.
+- :func:`generate_structures` keeps the lowest-energy conformer per molecule.
+- :func:`generate_ensembles` keeps up to ``max_num_confs``, lowest first.
+
+Batching is the point. nvMolKit parallelizes *across* molecules, so submitting
+a whole library in one call is what makes the GPU worth using; a per-molecule
+GPU call loses to CPU on launch overhead. Callers with one molecule get
+correct results but no benefit.
+
+The backend follows ``config.technical.device`` like the rest of gpuma:
+``"cpu"``, ``"cuda"``, or ``"cuda:N"``. The GPU path is optional -- if
+nvMolKit is missing, broken, or no CUDA device is present, everything falls
+back to the CPU and results stay valid. Pass ``allow_cpu_fallback=False`` to
+have that surface as an exception instead, which callers that parallelize CPU
+work themselves need in order to choose their own strategy.
+
+How many conformers are generated per molecule comes from :data:`CONF_BUDGET`,
+keyed on rotatable-bond count, unless ``n_confs`` overrides it with a flat
+number. The default tiers (50/200/300) match morfeus's own, so the CPU path
+does comparable work to the pre-existing gpuma behaviour; lowering them trades
+conformer-search quality for speed, roughly linearly.
 
 Notes
 -----
@@ -28,7 +40,8 @@ which builds parameters from a bare ``AllChem.EmbedParameters()`` and so runs
 plain distance geometry; the GPU path uses ETKDGv3 with
 ``useRandomCoords=True`` as nvMolKit requires. A given molecule may therefore
 land in a different conformer basin depending on the device. Pin
-``config.technical.device`` if you need run-to-run comparability.
+``config.technical.device`` if you need run-to-run comparability, and note that
+the default ``seed`` of -1 leaves RDKit free to pick its own per run.
 """
 
 from __future__ import annotations
@@ -43,10 +56,12 @@ if TYPE_CHECKING:  # pragma: no cover - annotation only, avoids importing torch
 
 logger = logging.getLogger(__name__)
 
-#: Conformers generated per molecule, by rotatable-bond count. Only the
-#: lowest-energy one survives, so these sit far below the morfeus defaults
-#: (50/200/300, at conformer.py:1819). Cost is linear in the budget; flexible
-#: molecules benefit from a larger one, rigid molecules do not.
+#: ``(max_rotatable_bonds, n_conformers)`` tiers, first match wins. Mirrors
+#: morfeus's own defaults (conformer.py:1819), so the CPU path generates the
+#: same number of conformers gpuma generated before this module existed. Cost
+#: is roughly linear in the budget: lowering the tiers is the single biggest
+#: speedup available, at the price of a less converged conformer search --
+#: which matters for flexible molecules and barely at all for rigid ones.
 CONF_BUDGET: tuple[tuple[int, int], ...] = ((7, 50), (12, 200), (10**9, 300))
 
 #: Default ETKDG seed. ``-1`` matches the morfeus path: RDKit picks a seed per
