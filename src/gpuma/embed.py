@@ -154,9 +154,13 @@ def _prepare(smiles: str):
 def _etkdg_params(seed: int, prune_rms: float, random_coords: bool, n_threads: int = 1):
     """Build ETKDGv3 parameters.
 
-    The morfeus path built these from a bare ``EmbedParameters()``, which left
-    ``useExpTorsionAnglePrefs``/``useBasicKnowledge`` off -- so it was running
+    The morfeus path builds these from a bare ``EmbedParameters()``, which
+    leaves ``useExpTorsionAnglePrefs``/``useBasicKnowledge`` off -- so it runs
     plain distance geometry, not ETKDG. ``ETKDGv3()`` turns them on.
+
+    ``useSmallRingTorsions`` is enabled to match morfeus, which sets it while
+    ``ETKDGv3()`` does not. It applies torsion preferences to rings of 8 atoms
+    or fewer, so it mostly affects saturated heterocycles.
     """
     from rdkit.Chem import rdDistGeom
 
@@ -165,6 +169,7 @@ def _etkdg_params(seed: int, prune_rms: float, random_coords: bool, n_threads: i
     p.pruneRmsThresh = prune_rms
     p.numThreads = n_threads
     p.useRandomCoords = random_coords  # required True by nvMolKit
+    p.useSmallRingTorsions = True
     return p
 
 
