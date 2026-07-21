@@ -164,7 +164,7 @@ def _to_structure(mol, conf_id: int, charge: int, multiplicity: int, smiles: str
     )
 
 
-def _embed_cpu(prepared, n_confs_override, seed, prune_rms, multiplicity, n_threads):
+def _embed_cpu(prepared, n_confs_override, seed, prune_rms, multiplicity, n_threads, n_keep=1):
     """CPU backend: morfeus, one molecule at a time.
 
     Uses :class:`morfeus.conformer.ConformerEnsemble` so CPU results stay
@@ -180,13 +180,14 @@ def _embed_cpu(prepared, n_confs_override, seed, prune_rms, multiplicity, n_thre
     beyond the ``useRandomCoords`` difference noted in the module docstring.
 
     ``prepared`` is a list of ``(index, smiles, mol, charge)``; results are
-    written into ``out`` by original index.
+    written into ``out`` by original index as lists of at most ``n_keep``
+    structures, lowest energy first.
     """
     from morfeus.conformer import ConformerEnsemble
 
     from .mol_utils import _to_coord_list, _to_symbol_list
 
-    out: dict[int, Structure] = {}
+    out: dict[int, list[Structure]] = {}
     for idx, smiles, mol, charge in prepared:
         n_confs = _conf_budget(mol, n_confs_override)
         try:
@@ -210,25 +211,37 @@ def _embed_cpu(prepared, n_confs_override, seed, prune_rms, multiplicity, n_thre
             logger.warning("no conformers generated for %s", smiles)
             continue
 
-        best = conformers[0]  # sort() puts lowest energy first
-        symbols = _to_symbol_list(getattr(best, "elements", []))
-        coordinates = _to_coord_list(getattr(best, "coordinates", []))
-        if len(symbols) != len(coordinates):
-            logger.warning("element/coordinate mismatch for %s", smiles)
-            continue
-
-        out[idx] = Structure(
-            symbols=symbols,
-            coordinates=coordinates,
-            charge=charge,
-            multiplicity=ensemble.multiplicity,
-            comment=f"Generated from SMILES: {smiles}",
-        )
+        kept: list[Structure] = []
+        for conformer in conformers[:n_keep]:  # sort() puts lowest energy first
+            symbols = _to_symbol_list(getattr(conformer, "elements", []))
+            coordinates = _to_coord_list(getattr(conformer, "coordinates", []))
+            if len(symbols) != len(coordinates):
+                logger.warning("element/coordinate mismatch for %s", smiles)
+                continue
+            kept.append(
+                Structure(
+                    symbols=symbols,
+                    coordinates=coordinates,
+                    charge=charge,
+                    multiplicity=ensemble.multiplicity,
+                    comment=f"Generated from SMILES: {smiles}",
+                )
+            )
+        if kept:
+            out[idx] = kept
     return out
 
 
 def _embed_gpu(
-    prepared, n_confs_override, seed, prune_rms, max_iters, multiplicity, gpu_ids, batch_size
+    prepared,
+    n_confs_override,
+    seed,
+    prune_rms,
+    max_iters,
+    multiplicity,
+    gpu_ids,
+    batch_size,
+    n_keep=1,
 ):
     """GPU backend: embed and minimize the whole batch via nvMolKit.
 
@@ -260,7 +273,7 @@ def _embed_gpu(
             (idx, smiles, mol, charge)
         )
 
-    out: dict[int, Structure] = {}
+    out: dict[int, list[Structure]] = {}
     for n_confs, members in sorted(groups.items()):
         mols = [m for _, _, m, _ in members]
         # nvMolKit mandates useRandomCoords=True.
@@ -292,14 +305,17 @@ def _embed_gpu(
                 logger.warning(
                     "no MMFF94 parameters for %s; keeping unminimized conformer", smiles
                 )
-            best = (
-                cids[min(range(len(energies)), key=energies.__getitem__)] if energies else cids[0]
-            )
-            out[idx] = _to_structure(mol, best, charge, multiplicity, smiles)
+                ranked = cids
+            else:
+                # Lowest energy first, matching morfeus's ensemble.sort().
+                ranked = [cids[i] for i in sorted(range(len(energies)), key=energies.__getitem__)]
+            out[idx] = [
+                _to_structure(mol, cid, charge, multiplicity, smiles) for cid in ranked[:n_keep]
+            ]
     return out
 
 
-def generate_structures(
+def _generate(
     smiles_list: list[str],
     config: Config | None = None,
     multiplicity: int | None = None,
@@ -310,7 +326,8 @@ def generate_structures(
     batch_size: int = 500,
     n_threads: int = 1,
     allow_cpu_fallback: bool = True,
-) -> list[Structure | None]:
+    n_keep: int = 1,
+) -> list[list[Structure] | None]:
     """Convert a list of SMILES to 3D structures as a single batch.
 
     For each molecule a conformer ensemble is embedded with ETKDGv3, every
@@ -382,7 +399,7 @@ def generate_structures(
     gpu_ids = _gpu_ids_from_device(str(config.technical.device))
 
     prepared = []
-    results: list[Structure | None] = [None] * len(smiles_list)
+    results: list[list[Structure] | None] = [None] * len(smiles_list)
     for idx, smiles in enumerate(smiles_list):
         got = _prepare(smiles)
         if got is None:
@@ -395,7 +412,9 @@ def generate_structures(
         return results
 
     if gpu_ids is None:
-        out = _embed_cpu(prepared, n_confs, seed, prune_rms_thresh, multiplicity, n_threads)
+        out = _embed_cpu(
+            prepared, n_confs, seed, prune_rms_thresh, multiplicity, n_threads, n_keep
+        )
     else:
         try:
             # No pre-flight probe: a missing/broken nvMolKit raises ImportError
@@ -409,13 +428,104 @@ def generate_structures(
                 multiplicity,
                 gpu_ids,
                 batch_size,
+                n_keep,
             )
         except Exception as exc:  # noqa: BLE001 - a GPU fault must not lose the run
             if not allow_cpu_fallback:
                 raise
             logger.warning("GPU embedding unavailable (%s); falling back to CPU", exc)
-            out = _embed_cpu(prepared, n_confs, seed, prune_rms_thresh, multiplicity, n_threads)
+            out = _embed_cpu(
+                prepared, n_confs, seed, prune_rms_thresh, multiplicity, n_threads, n_keep
+            )
 
-    for idx, structure in out.items():
-        results[idx] = structure
+    for idx, structures in out.items():
+        results[idx] = structures
     return results
+
+
+def generate_structures(
+    smiles_list: list[str],
+    config: Config | None = None,
+    multiplicity: int | None = None,
+    n_confs: int | None = None,
+    seed: int = DEFAULT_SEED,
+    prune_rms_thresh: float = DEFAULT_PRUNE_RMS,
+    max_iters: int = DEFAULT_MAX_ITERS,
+    batch_size: int = 500,
+    n_threads: int = 1,
+    allow_cpu_fallback: bool = True,
+) -> list[Structure | None]:
+    """Convert SMILES to one 3D structure each, as a single batch.
+
+    Keeps only the lowest-energy conformer per molecule. See :func:`_generate`
+    for the shared parameter meanings.
+
+    Returns
+    -------
+    list[Structure | None]
+        One entry per input, in input order. ``None`` marks a molecule that
+        could not be parsed or embedded.
+    """
+    batches = _generate(
+        smiles_list,
+        config,
+        multiplicity,
+        n_confs,
+        seed,
+        prune_rms_thresh,
+        max_iters,
+        batch_size,
+        n_threads,
+        allow_cpu_fallback,
+        n_keep=1,
+    )
+    return [structures[0] if structures else None for structures in batches]
+
+
+def generate_ensembles(
+    smiles_list: list[str],
+    max_num_confs: int,
+    config: Config | None = None,
+    multiplicity: int | None = None,
+    n_confs: int | None = None,
+    seed: int = DEFAULT_SEED,
+    prune_rms_thresh: float = DEFAULT_PRUNE_RMS,
+    max_iters: int = DEFAULT_MAX_ITERS,
+    batch_size: int = 500,
+    n_threads: int = 1,
+    allow_cpu_fallback: bool = True,
+) -> list[list[Structure] | None]:
+    """Convert SMILES to conformer ensembles, as a single batch.
+
+    Parameters
+    ----------
+    max_num_confs:
+        Maximum conformers returned per molecule, lowest energy first. Fewer
+        may come back: pruning removes duplicates, so the ensemble can be
+        smaller than both this and ``n_confs``.
+
+    Other parameters are as :func:`_generate`. Note ``n_confs`` controls how
+    many conformers are *generated*, while ``max_num_confs`` controls how many
+    are *returned* -- generating fewer than you keep just wastes the budget.
+
+    Returns
+    -------
+    list[list[Structure] | None]
+        One entry per input, in input order. ``None`` marks a molecule that
+        could not be parsed or embedded.
+    """
+    if max_num_confs <= 0:
+        raise ValueError(f"max_num_confs must be positive, got {max_num_confs}")
+    return _generate(
+        smiles_list,
+        config,
+        multiplicity,
+        n_confs,
+        seed,
+        prune_rms_thresh,
+        max_iters,
+        batch_size,
+        n_threads,
+        allow_cpu_fallback,
+        n_keep=max_num_confs,
+    )

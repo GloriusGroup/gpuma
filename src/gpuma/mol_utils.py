@@ -6,11 +6,15 @@ with RDKit.
 """
 
 from numbers import Integral
+from typing import TYPE_CHECKING
 
 from ase.data import chemical_symbols
 
 from .decorators import time_it
 from .structure import Structure
+
+if TYPE_CHECKING:  # pragma: no cover - annotation only, avoids importing torch
+    from .config import Config
 
 
 def _to_symbol_list(elements) -> list[str]:
@@ -56,12 +60,16 @@ def smiles_to_conformer_ensemble(
     max_num_confs: int = 5,
     multiplicity: int = 1,
     seed: int | None = None,
+    config: "Config | None" = None,
 ) -> list[Structure]:
     """Generate multiple conformers from a SMILES string.
 
-    This function uses the :mod:`morfeus` library to generate conformers from a
-    SMILES string. The resulting conformers are automatically pruned based on
-    RMSD and sorted by energy.
+    Thin wrapper over :func:`gpuma.embed.generate_ensembles`, which runs on the
+    GPU when ``config.technical.device`` asks for one and falls back to morfeus
+    on the CPU otherwise. Conformers are pruned by RMSD and sorted by energy.
+
+    For more than one molecule prefer :func:`gpuma.embed.generate_ensembles`
+    directly -- it batches, which is what makes the GPU backend worthwhile.
 
     Parameters
     ----------
@@ -72,9 +80,13 @@ def smiles_to_conformer_ensemble(
     multiplicity:
         Spin multiplicity to set on all generated conformers (default: ``1``).
     seed:
-        Optional random seed for reproducible conformer generation. Sets both
-        the Python and NumPy random seeds before calling the conformer
-        generator.
+        Optional random seed for reproducible conformer generation. This is now
+        passed through to the embedding itself; previously it only seeded the
+        Python and NumPy RNGs, which RDKit does not consult, so it had no
+        effect on the generated geometries.
+    config:
+        gpuma configuration, used for device selection. Loaded from the default
+        location if omitted.
 
     Returns
     -------
@@ -101,48 +113,18 @@ def smiles_to_conformer_ensemble(
         raise ValueError("max_num_confs must be positive")
 
     try:
-        from morfeus.conformer import ConformerEnsemble  # type: ignore
-        from rdkit import Chem
+        # Imported here rather than at module scope: embed imports this module's
+        # coordinate helpers, so a top-level import would be circular.
+        from .embed import DEFAULT_SEED, generate_ensembles
 
-        if seed is not None:
-            import random
-
-            import numpy as np
-
-            random.seed(seed)
-            np.random.seed(seed)
-
-        mol = Chem.MolFromSmiles(smiles)
-        if mol is None:
-            raise ValueError("Invalid SMILES string")
-
-        charge = Chem.GetFormalCharge(mol)
-        mol = Chem.AddHs(mol)
-
-        ensemble = ConformerEnsemble.from_rdkit(mol)
-        ensemble.prune_rmsd()
-        ensemble.multiplicity = multiplicity
-        ensemble.sort()
-
-        structures: list[Structure] = []
-        for i, conformer in enumerate(ensemble):
-            if i >= max_num_confs:
-                break
-
-            atoms = _to_symbol_list(getattr(conformer, "elements", []))
-            coordinates = _to_coord_list(getattr(conformer, "coordinates", []))
-
-            if len(atoms) != len(coordinates):
-                continue
-
-            structures.append(
-                Structure(
-                    symbols=atoms,
-                    coordinates=coordinates,
-                    charge=charge,
-                    multiplicity=ensemble.multiplicity,
-                )
-            )
+        ensembles = generate_ensembles(
+            [smiles.strip()],
+            max_num_confs=max_num_confs,
+            config=config,
+            multiplicity=multiplicity,
+            seed=DEFAULT_SEED if seed is None else seed,
+        )
+        structures = ensembles[0]
 
         if not structures:
             raise ValueError("No valid conformers could be generated from SMILES")
@@ -160,18 +142,20 @@ def smiles_to_conformer_ensemble(
         raise ValueError(f"Failed to generate conformers from SMILES '{smiles}': {exc}") from exc
 
 
-def smiles_to_structure(smiles: str) -> Structure:
+def smiles_to_structure(smiles: str, config: "Config | None" = None) -> Structure:
     """Convert a SMILES string to a single 3D molecular structure.
 
-    This function generates the lowest-energy conformer from a SMILES string
-    by calling :func:`smiles_to_conformer_ensemble` and returning only the
-    first structure.
+    Returns the lowest-energy conformer. For more than one molecule prefer
+    :func:`gpuma.embed.generate_structures` directly -- it batches, which is
+    what makes the GPU backend worthwhile.
     """
     if not smiles or not smiles.strip():
         raise ValueError("SMILES string cannot be empty")
 
     try:
-        ensemble = smiles_to_conformer_ensemble(smiles.strip(), max_num_confs=1)
+        ensemble = smiles_to_conformer_ensemble(
+            smiles.strip(), max_num_confs=1, config=config
+        )
 
         if not ensemble:
             raise ValueError("No conformers generated from SMILES")
