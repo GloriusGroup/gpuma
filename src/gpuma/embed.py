@@ -364,15 +364,19 @@ def _generate(
 ) -> list[list[Structure] | None]:
     """Convert a list of SMILES to 3D structures as a single batch.
 
-    For each molecule a conformer ensemble is embedded, every conformer is
-    force-field minimized, and the lowest-energy ones are returned.
-    Molecules that cannot be parsed or embedded yield ``None`` rather than
-    raising, so one bad SMILES cannot abort a library.
+    Shared implementation behind :func:`generate_structures` and
+    :func:`generate_ensembles`, which differ only in ``n_keep``. For each
+    molecule a conformer ensemble is embedded, every conformer is minimized
+    with the force field :func:`_force_field_for` selects, and the ``n_keep``
+    lowest-energy ones are kept. Molecules that cannot be parsed or embedded
+    yield ``None`` rather than raising, so one bad SMILES cannot abort a
+    library.
 
     Backend selection follows ``config.technical.device``, the same field the
-    rest of gpuma uses: ``"cpu"`` runs RDKit, ``"cuda"`` uses every visible
-    GPU, ``"cuda:N"`` pins device ``N``. Consistent with the rest of gpuma, a
-    GPU request that cannot be served falls back to CPU rather than failing.
+    rest of gpuma uses: ``"cpu"`` runs morfeus, ``"cuda"`` uses every visible
+    GPU via nvMolKit, ``"cuda:N"`` pins device ``N``. Consistent with the rest
+    of gpuma, a GPU request that cannot be served falls back to CPU rather
+    than failing.
 
     Parameters
     ----------
@@ -384,33 +388,40 @@ def _generate(
         Spin multiplicity applied to every returned structure. ``None`` takes
         ``config.optimization.multiplicity``.
     n_confs:
-        Conformers per molecule. ``None`` selects a budget from rotatable-bond
-        count via :data:`CONF_BUDGET`; an explicit int applies that count
-        uniformly instead.
+        Conformers *generated* per molecule. ``None`` selects a budget from
+        rotatable-bond count via :data:`CONF_BUDGET`; an explicit int applies
+        that count uniformly instead. Distinct from ``n_keep``, which is how
+        many are returned.
     seed:
-        ETKDG random seed. ``-1`` lets RDKit choose per run.
+        Random seed for the embedding. ``-1`` lets RDKit choose one per run,
+        making geometries non-reproducible.
     prune_rms_thresh:
         RMSD threshold for discarding duplicate conformers during embedding.
+        Fewer conformers than ``n_confs`` may survive it.
     max_iters:
         Maximum force-field minimization iterations per conformer. GPU backend
         only -- the CPU backend goes through morfeus, which does not expose it.
     batch_size:
         Molecules per nvMolKit batch. GPU backend only.
     n_threads:
-        RDKit thread count, CPU backend only -- matching RDKit's own default
-        of 1. Leave at 1 when the caller already parallelizes across molecules;
-        raise it when embedding a small number of molecules in one process.
+        Thread count handed to RDKit for embedding and minimization, CPU
+        backend only. Leave at 1 when the caller already parallelizes across
+        molecules; raise it when embedding a few molecules in one process.
     allow_cpu_fallback:
         When a GPU was requested but is unusable, ``True`` transparently runs
         on CPU. Set ``False`` to re-raise instead -- useful when the caller
         parallelizes CPU work differently (e.g. across processes) and needs to
         know the GPU path was not taken, rather than silently getting a serial
         CPU run.
+    n_keep:
+        Maximum conformers *returned* per molecule, lowest energy first.
 
     Returns
     -------
-    list[Structure | None]
-        One entry per input, in input order. ``None`` marks a failed molecule.
+    list[list[Structure] | None]
+        One entry per input, in input order. Each entry is a list of at most
+        ``n_keep`` structures, or ``None`` for a molecule that could not be
+        parsed or embedded.
 
     Raises
     ------
@@ -491,14 +502,55 @@ def generate_structures(
 ) -> list[Structure | None]:
     """Convert SMILES to one 3D structure each, as a single batch.
 
-    Keeps only the lowest-energy conformer per molecule. See :func:`_generate`
-    for the shared parameter meanings.
+    Embeds a conformer ensemble per molecule, minimizes every conformer, and
+    keeps the lowest-energy one. Use :func:`generate_ensembles` to keep more
+    than one.
+
+    Parameters
+    ----------
+    smiles_list:
+        SMILES strings to convert.
+    config:
+        gpuma configuration; ``technical.device`` selects the backend. Loaded
+        from the default location if omitted.
+    multiplicity:
+        Spin multiplicity applied to every returned structure. ``None`` takes
+        ``config.optimization.multiplicity``.
+    n_confs:
+        Conformers generated per molecule. ``None`` selects a budget from
+        rotatable-bond count via :data:`CONF_BUDGET`; an explicit int applies
+        that count uniformly instead.
+    seed:
+        Random seed for the embedding. ``-1`` lets RDKit choose one per run,
+        making geometries non-reproducible.
+    prune_rms_thresh:
+        RMSD threshold for discarding duplicate conformers during embedding.
+    max_iters:
+        Maximum force-field minimization iterations per conformer. GPU backend
+        only -- the CPU backend goes through morfeus, which does not expose it.
+    batch_size:
+        Molecules per nvMolKit batch. GPU backend only.
+    n_threads:
+        Thread count handed to RDKit, CPU backend only. Leave at 1 when the
+        caller already parallelizes across molecules.
+    allow_cpu_fallback:
+        When a GPU was requested but is unusable, ``True`` transparently runs
+        on CPU. Set ``False`` to re-raise instead, so a caller that
+        parallelizes CPU work itself can choose its own strategy rather than
+        silently getting a serial CPU run.
 
     Returns
     -------
     list[Structure | None]
         One entry per input, in input order. ``None`` marks a molecule that
-        could not be parsed or embedded.
+        could not be parsed or embedded, so one bad SMILES cannot abort a
+        library.
+
+    Raises
+    ------
+    Exception
+        Whatever the GPU backend raised, when a GPU was requested and
+        ``allow_cpu_fallback`` is ``False``.
     """
     batches = _generate(
         smiles_list,
@@ -531,22 +583,32 @@ def generate_ensembles(
 ) -> list[list[Structure] | None]:
     """Convert SMILES to conformer ensembles, as a single batch.
 
+    As :func:`generate_structures`, but keeps several conformers per molecule
+    instead of one. All other parameters carry the same meaning.
+
     Parameters
     ----------
     max_num_confs:
-        Maximum conformers returned per molecule, lowest energy first. Fewer
-        may come back: pruning removes duplicates, so the ensemble can be
-        smaller than both this and ``n_confs``.
-
-    Other parameters are as :func:`_generate`. Note ``n_confs`` controls how
-    many conformers are *generated*, while ``max_num_confs`` controls how many
-    are *returned* -- generating fewer than you keep just wastes the budget.
+        Maximum conformers *returned* per molecule, lowest energy first. This
+        is distinct from ``n_confs``, which controls how many are *generated* --
+        generating fewer than you keep simply wastes the budget. Fewer than
+        requested may come back either way, since RMSD pruning removes
+        duplicates.
 
     Returns
     -------
     list[list[Structure] | None]
-        One entry per input, in input order. ``None`` marks a molecule that
-        could not be parsed or embedded.
+        One entry per input, in input order. Each entry is a list of at most
+        ``max_num_confs`` structures, or ``None`` for a molecule that could not
+        be parsed or embedded.
+
+    Raises
+    ------
+    ValueError
+        If ``max_num_confs`` is not positive.
+    Exception
+        Whatever the GPU backend raised, when a GPU was requested and
+        ``allow_cpu_fallback`` is ``False``.
     """
     if max_num_confs <= 0:
         raise ValueError(f"max_num_confs must be positive, got {max_num_confs}")
