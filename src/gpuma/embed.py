@@ -1,49 +1,17 @@
 """Batched SMILES -> 3D structure generation, GPU-accelerated where available.
 
-This is the single SMILES-to-geometry path in gpuma. The per-molecule helpers
-in :mod:`gpuma.mol_utils` -- and therefore ``smiles_to_xyz``,
-``smiles_to_ensemble``, the API and the CLI -- delegate here.
+The single SMILES-to-geometry path in gpuma: the per-molecule helpers in
+:mod:`gpuma.mol_utils`, and therefore the API and CLI, delegate here.
+:func:`generate_structures` keeps the lowest-energy conformer per molecule,
+:func:`generate_ensembles` keeps several. Both take whole lists, because the
+GPU backend parallelizes across molecules rather than within one.
 
-Two public entry points, both batched:
+The backend follows ``config.technical.device`` like the rest of gpuma, and
+falls back to CPU whenever the GPU is unusable.
 
-- :func:`generate_structures` keeps the lowest-energy conformer per molecule.
-- :func:`generate_ensembles` keeps up to ``max_num_confs``, lowest first.
-
-Batching is the point. nvMolKit parallelizes *across* molecules, so submitting
-a whole library in one call is what makes the GPU worth using; a per-molecule
-GPU call loses to CPU on launch overhead. Callers with one molecule get
-correct results but no benefit.
-
-The backend follows ``config.technical.device`` like the rest of gpuma:
-``"cpu"``, ``"cuda"``, or ``"cuda:N"``. The GPU path is optional -- if
-nvMolKit is missing, broken, or no CUDA device is present, everything falls
-back to the CPU and results stay valid. Pass ``allow_cpu_fallback=False`` to
-have that surface as an exception instead, which callers that parallelize CPU
-work themselves need in order to choose their own strategy.
-
-How many conformers are generated per molecule comes from :data:`CONF_BUDGET`,
-keyed on rotatable-bond count, unless ``n_confs`` overrides it with a flat
-number. The default tiers (50/200/300) match morfeus's own, so the CPU path
-does comparable work to the pre-existing gpuma behaviour; lowering them trades
-conformer-search quality for speed, roughly linearly.
-
-Notes
------
-Both backends pick a force field the same way -- MMFF94 where it applies, UFF
-otherwise, and no minimization for the ~0.1% of molecules with neither -- so a
-given molecule is minimized identically regardless of device. Note that this
-makes the ``energy`` field non-uniform across a returned batch: MMFF94 and UFF
-values are not on a common scale. That is harmless for ranking conformers
-*within* a molecule, which is all this module does with them, but do not
-compare energies between molecules without checking which field was used.
-
-The embeddings are not equivalent, however. The CPU path goes through morfeus,
-which builds parameters from a bare ``AllChem.EmbedParameters()`` and so runs
-plain distance geometry; the GPU path uses ETKDGv3 with
-``useRandomCoords=True`` as nvMolKit requires. A given molecule may therefore
-land in a different conformer basin depending on the device. Pin
-``config.technical.device`` if you need run-to-run comparability, and note that
-the default ``seed`` of -1 leaves RDKit free to pick its own per run.
+The two backends do not produce identical geometries: morfeus (CPU) runs plain
+distance geometry, while nvMolKit (GPU) runs ETKDGv3 from random coordinates.
+Pin the device if you need comparable runs.
 """
 
 from __future__ import annotations
@@ -194,6 +162,11 @@ def _force_field_for(mol) -> str | None:
     MMFF94 is preferred where it applies; UFF covers most of what MMFF94 does
     not (boronic esters, some phosphines), and roughly 0.1% of a typical
     library has neither.
+
+    Because the ladder mixes force fields, energies are only comparable
+    *within* a molecule -- which is all this module uses them for, to rank
+    conformers. Do not compare energies across molecules without checking
+    which field produced each.
 
     Returns
     -------
@@ -391,8 +364,8 @@ def _generate(
 ) -> list[list[Structure] | None]:
     """Convert a list of SMILES to 3D structures as a single batch.
 
-    For each molecule a conformer ensemble is embedded with ETKDGv3, every
-    conformer is force-field minimized, and the lowest-energy one is returned.
+    For each molecule a conformer ensemble is embedded, every conformer is
+    force-field minimized, and the lowest-energy ones are returned.
     Molecules that cannot be parsed or embedded yield ``None`` rather than
     raising, so one bad SMILES cannot abort a library.
 
