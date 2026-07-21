@@ -32,6 +32,21 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# GPU-accelerated conformer embedding (gpuma.embed). Optional: without it the
+# CPU backend is used and results stay valid.
+#
+# nvMolKit links RDKit's shared libraries by content hash, so the wheel must be
+# built against the exact pinned RDKit above. The default PyPI wheel targets a
+# different RDKit and will fail to load, so install the matching variant from
+# NVIDIA's per-RDKit index instead of `pip install gpuma[gpu]`:
+#
+#   pip install "nvmolkit==0.5.1+rdkit2025.9.3" \
+#     --extra-index-url https://nvidia-bionemo.github.io/nvMolKit/wheels/rdkit2025.9.3/simple/
+#
+# Keep the version suffix in step with the `rdkit==` pin in [dependencies].
+gpu = [
+    "nvmolkit==0.5.1+rdkit2025.9.3",
+]
 dev = [
     "pytest>=9.0.0",
     "build>=1.2.1",

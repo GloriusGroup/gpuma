@@ -81,6 +81,21 @@ considered experimental.
   pip install gpuma
   ```
 
+> **GPU conformer embedding (optional):** SMILES → 3D conversion can run on the
+> GPU via [nvMolKit](https://nvidia-bionemo.github.io/nvMolKit/). Without it the
+> CPU backend is used and results stay valid, so this step is optional.
+>
+> nvMolKit links RDKit's shared libraries by content hash, so the wheel must
+> match GPUMA's pinned RDKit exactly. The default PyPI wheel targets a different
+> RDKit and fails to load with a missing `libboost_serialization` error — install
+> the matching variant from NVIDIA's per-RDKit index instead:
+> ```bash
+> pip install "nvmolkit==0.5.1+rdkit2025.9.3" \
+>   --extra-index-url https://nvidia-bionemo.github.io/nvMolKit/wheels/rdkit2025.9.3/simple/
+> ```
+> The backend is then selected by `technical.device` in the config, as
+> everywhere else in GPUMA.
+
 
 ### Option 2: Install from source
 
