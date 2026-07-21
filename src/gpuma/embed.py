@@ -29,11 +29,13 @@ conformer-search quality for speed, roughly linearly.
 
 Notes
 -----
-Both backends minimize with **MMFF94** and neither falls back to another force
-field, so conformer energies are comparable across devices. Molecules without
-MMFF94 parameters (~2% of a typical library, e.g. some phosphine ligands) keep
-an unminimized conformer on both paths rather than being silently switched to
-UFF on one of them.
+Both backends pick a force field the same way -- MMFF94 where it applies, UFF
+otherwise, and no minimization for the ~0.1% of molecules with neither -- so a
+given molecule is minimized identically regardless of device. Note that this
+makes the ``energy`` field non-uniform across a returned batch: MMFF94 and UFF
+values are not on a common scale. That is harmless for ranking conformers
+*within* a molecule, which is all this module does with them, but do not
+compare energies between molecules without checking which field was used.
 
 The embeddings are not equivalent, however. The CPU path goes through morfeus,
 which builds parameters from a bare ``AllChem.EmbedParameters()`` and so runs
@@ -179,6 +181,29 @@ def _to_structure(mol, conf_id: int, charge: int, multiplicity: int, smiles: str
     )
 
 
+def _force_field_for(mol) -> str | None:
+    """Pick the force field to minimize ``mol`` with.
+
+    Both backends follow the same ladder -- MMFF94, then UFF, then nothing --
+    so a given molecule is minimized the same way regardless of device.
+    MMFF94 is preferred where it applies; UFF covers most of what MMFF94 does
+    not (boronic esters, some phosphines), and roughly 0.1% of a typical
+    library has neither.
+
+    Returns
+    -------
+    str | None
+        ``"MMFF94"``, ``"UFF"``, or ``None`` when no force field applies.
+    """
+    from rdkit.Chem import AllChem
+
+    if AllChem.MMFFHasAllMoleculeParams(mol):
+        return "MMFF94"
+    if AllChem.UFFHasAllMoleculeParams(mol):
+        return "UFF"
+    return None
+
+
 def _embed_cpu(prepared, n_confs_override, seed, prune_rms, multiplicity, n_threads, n_keep=1):
     """CPU backend: morfeus, one molecule at a time.
 
@@ -205,11 +230,16 @@ def _embed_cpu(prepared, n_confs_override, seed, prune_rms, multiplicity, n_thre
     out: dict[int, list[Structure]] = {}
     for idx, smiles, mol, charge in prepared:
         n_confs = _conf_budget(mol, n_confs_override)
+        force_field = _force_field_for(mol)
+        if force_field is None:
+            logger.warning(
+                "no MMFF94 or UFF parameters for %s; keeping unminimized conformer", smiles
+            )
         try:
             ensemble = ConformerEnsemble.from_rdkit(
                 mol,
                 n_conformers=n_confs,
-                optimize="MMFF94",
+                optimize=force_field,
                 random_seed=seed if seed >= 0 else None,
                 rmsd_thres=prune_rms,
                 n_threads=n_threads,
@@ -262,14 +292,15 @@ def _embed_gpu(
 
     Molecules are grouped by conformer budget because nvMolKit takes a single
     ``confsPerMolecule`` per call, so a batch spanning several budgets needs
-    one call per distinct count. Molecules without MMFF parameters are
-    minimized on the CPU afterwards rather than maintaining a second GPU path
-    for a ~2% minority.
+    one call per distinct count. Within a group they are partitioned again by
+    force field -- see :func:`_force_field_for` -- and minimized in one batched
+    call per field, so the UFF minority stays on the GPU rather than falling
+    back to per-molecule CPU work.
     """
     from nvmolkit.embedMolecules import EmbedMolecules
     from nvmolkit.mmffOptimization import MMFFOptimizeMoleculesConfs
     from nvmolkit.types import HardwareOptions
-    from rdkit.Chem import AllChem
+    from nvmolkit.uffOptimization import UFFOptimizeMoleculesConfs
 
     # -1 lets nvMolKit auto-detect thread count; it links libgomp, so
     # OMP_NUM_THREADS already governs that natively. gpuIds=[] means "every
@@ -295,13 +326,26 @@ def _embed_gpu(
         params = _etkdg_params(seed, prune_rms, random_coords=True)
         EmbedMolecules(mols, params, confsPerMolecule=n_confs, hardwareOptions=hardware)
 
-        mmff_ok = [m for m in mols if m.GetNumConformers() and AllChem.MMFFHasAllMoleculeParams(m)]
+        by_field: dict[str, list] = {"MMFF94": [], "UFF": []}
+        for mol in mols:
+            if not mol.GetNumConformers():
+                continue
+            field = _force_field_for(mol)
+            if field is not None:
+                by_field[field].append(mol)
+
+        # maxIters is passed to both so the two groups get the same convergence
+        # budget; nvMolKit's UFF default is 1000 against MMFF's 200.
         energies_by_mol: dict[int, list[float]] = {}
-        if mmff_ok:
-            nested = MMFFOptimizeMoleculesConfs(
-                mmff_ok, maxIters=max_iters, hardwareOptions=hardware
-            )
-            for mol, energies in zip(mmff_ok, nested, strict=True):
+        for field, minimize in (
+            ("MMFF94", MMFFOptimizeMoleculesConfs),
+            ("UFF", UFFOptimizeMoleculesConfs),
+        ):
+            group = by_field[field]
+            if not group:
+                continue
+            nested = minimize(group, maxIters=max_iters, hardwareOptions=hardware)
+            for mol, energies in zip(group, nested, strict=True):
                 energies_by_mol[id(mol)] = list(energies)
 
         for idx, smiles, mol, charge in members:
@@ -311,14 +355,11 @@ def _embed_gpu(
             cids = [c.GetId() for c in mol.GetConformers()]
             energies = energies_by_mol.get(id(mol))
             if energies is None:
-                # No MMFF94 parameters. Deliberately NOT falling back to UFF:
-                # the CPU backend (morfeus, optimize="MMFF94") has no such
-                # fallback either, and mixing force fields between backends
-                # would make their geometries incomparable. The conformer is
-                # kept unminimized, which is what morfeus does here too --
-                # except morfeus does it silently, hence the warning.
+                # Neither MMFF94 nor UFF applies, so there is nothing to rank
+                # by and the conformers stay as embedded. The CPU backend does
+                # the same, silently -- hence the warning here.
                 logger.warning(
-                    "no MMFF94 parameters for %s; keeping unminimized conformer", smiles
+                    "no MMFF94 or UFF parameters for %s; keeping unminimized conformer", smiles
                 )
                 ranked = cids
             else:

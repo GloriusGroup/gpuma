@@ -14,6 +14,7 @@ from gpuma.config import Config, load_config_from_file
 from gpuma.embed import (
     CONF_BUDGET,
     _conf_budget,
+    _force_field_for,
     _gpu_ids_from_device,
     _prepare,
     generate_ensembles,
@@ -29,6 +30,10 @@ from gpuma.structure import Structure
 ETHANOL = "CCO"
 METHANE = "C"
 BENZOIC_ACID = "c1ccccc1C(=O)O"
+
+#: Pinacol boronate: no MMFF94 parameters, but UFF covers it. Around 0.6% of
+#: a typical library falls in this gap, so the UFF rung matters.
+UFF_ONLY = "CC1(C)OB(c2ccc(C(=O)O)cc2)OC1(C)C"
 
 #: Parses as a molecule but has neither MMFF94 nor UFF parameters.
 NO_FORCE_FIELD_PARAMS = "[Fe](Cl)(Cl)Cl"
@@ -110,6 +115,36 @@ def test_conf_budget_override_is_at_least_one():
     mol, _ = _prepare(ETHANOL)
     assert _conf_budget(mol, 0) == 1
     assert _conf_budget(mol, -5) == 1
+
+
+# ---------------------------------------------------------------------------
+# Force field selection
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("smiles", "expected"),
+    [
+        (ETHANOL, "MMFF94"),
+        (METHANE, "MMFF94"),
+        (BENZOIC_ACID, "MMFF94"),
+        (UFF_ONLY, "UFF"),
+        (NO_FORCE_FIELD_PARAMS, None),
+    ],
+)
+def test_force_field_ladder(smiles, expected):
+    """MMFF94 where it applies, UFF next, None when neither does."""
+    mol, _ = _prepare(smiles)
+    assert _force_field_for(mol) == expected
+
+
+def test_uff_only_molecule_is_minimized(cpu_config):
+    """A molecule without MMFF94 parameters still gets a real geometry via UFF."""
+    (structure,) = generate_structures([UFF_ONLY], cpu_config, n_confs=FEW_CONFS)
+
+    assert isinstance(structure, Structure)
+    assert "B" in structure.symbols
+    assert len({tuple(xyz) for xyz in structure.coordinates}) > 1
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +245,16 @@ def test_generate_structures_without_force_field_params(cpu_config):
     )
     assert isinstance(structure, Structure)
     assert "Fe" in structure.symbols
+
+
+def test_mixed_force_fields_in_one_batch(cpu_config):
+    """MMFF94, UFF and unminimizable molecules survive the same batch."""
+    smiles = [ETHANOL, UFF_ONLY, NO_FORCE_FIELD_PARAMS]
+    results = generate_structures(smiles, cpu_config, n_confs=FEW_CONFS)
+
+    assert all(isinstance(s, Structure) for s in results)
+    assert "B" in results[1].symbols
+    assert "Fe" in results[2].symbols
 
 
 def test_generate_structures_loads_config_when_omitted():
