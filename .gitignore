@@ -146,3 +146,7 @@ examples/screening_results/
 
 uv.lock
 /.claude/
+
+# Local-only benchmark scripts (kept out of the repo per request)
+/examples/example_ensemble_optimization_kraken.py
+/examples/primary_amines_benchmark.py
