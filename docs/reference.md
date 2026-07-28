@@ -2,11 +2,40 @@
 
 Documentation for the core functions in `gpuma`.
 
+!!! note "Package layout"
+    Everything documented here is re-exported from the top-level `gpuma`
+    namespace, so the public API is flat: `from gpuma import optimize_single_smiles,
+    Config, read_multi_xyz` all work regardless of where a symbol lives internally.
+    Internally the package is organised into subpackages:
+
+    - `gpuma.models` — model dispatchers (`load_calculator`, `load_torchsim_model`)
+      and the `AVAILABLE_*_MODELS` registries, with backend-specific loaders under
+      `models/fairchem.py`, `models/orb.py`, `models/sevennet.py`.
+    - `gpuma.conformer_generation` — SMILES → 3D structure/ensemble embedding
+      (`embed.py`, `mol_utils.py`).
+    - `gpuma.utils` — I/O (`io_handler.py`), logging (`logging_utils.py`) and
+      timing helpers (`decorators.py`).
+    - Top-level modules `structure.py`, `config.py`, `optimizer.py`, `api.py`,
+      `cli.py`.
+
+    The fully-qualified paths below (e.g. `gpuma.utils.io_handler.read_xyz`) are
+    the canonical source locations; the short top-level aliases (`gpuma.read_xyz`)
+    are equivalent.
+
 ::: gpuma.api
     options:
       members: []
       show_root_heading: false
       show_source: false
+
+## Data Structures
+The core container passed between I/O, conformer generation and optimization.
+
+::: gpuma.structure.Structure
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
 
 ## Single Structure Optimization
 Methods for optimizing individual molecules provided as SMILES or XYZ files.
@@ -54,6 +83,37 @@ Functions for directly loading model calculators and torch-sim wrappers.
       heading_level: 3
 
 ::: gpuma.models.load_torchsim_model
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
+
+## Configuration
+The `Config` object controls model selection, optimization settings, conformer
+generation and technical/device options. It is accepted by every high- and
+low-level optimization function. A ready-to-use instance carrying the built-in
+defaults is available as `gpuma.default_config` (equivalent to `Config()`). See
+the [Configuration](config.md) page for the full list of keys and defaults.
+
+::: gpuma.config.Config
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
+
+::: gpuma.config.load_config_from_file
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
+
+::: gpuma.config.save_config_to_file
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
+
+::: gpuma.config.resolve_model_type
     options:
       show_root_heading: true
       show_root_full_path: false
