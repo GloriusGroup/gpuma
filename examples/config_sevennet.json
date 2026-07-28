@@ -1,0 +1,52 @@
+{
+  "optimization": {
+
+    "batch_optimization_mode": "batch",
+    "batch_optimizer": "fire",
+
+    "charge": 0,
+    "multiplicity": 1,
+
+    "force_convergence_criterion": 5e-2,
+    "energy_convergence_criterion": null
+
+  },
+
+  "model": {
+
+    "model_type": "sevennet",
+    "model_name": "7net-omni",
+    "model_modal": "omol25_high",
+
+    "model_path": null,
+    "model_cache_dir": null,
+
+    "huggingface_token": null,
+    "huggingface_token_file": null,
+
+    "d3_correction": false,
+    "d3_functional": "PBE",
+    "d3_damping": "BJ"
+
+  },
+
+  "conformer_generation": {
+
+    "max_num_conformers": 20,
+    "conformer_seed": 42
+
+  },
+
+  "technical": {
+
+    "device": "cuda:0",
+
+    "max_memory_padding": 0.95,
+    "memory_scaling_factor": 1.75,
+    "max_atoms_to_try": 100000,
+    "steps_between_swaps": 1,
+
+    "logging_level": "INFO"
+
+  }
+}

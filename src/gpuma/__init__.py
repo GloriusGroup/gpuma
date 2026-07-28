@@ -41,6 +41,7 @@ from .io_handler import (
 from .models import (
     AVAILABLE_FAIRCHEM_MODELS,
     AVAILABLE_ORB_MODELS,
+    AVAILABLE_SEVENNET_MODELS,
     load_calculator,
     load_torchsim_model,
 )
@@ -73,6 +74,7 @@ __all__ = [
     "load_torchsim_model",
     "AVAILABLE_FAIRCHEM_MODELS",
     "AVAILABLE_ORB_MODELS",
+    "AVAILABLE_SEVENNET_MODELS",
     # Configuration
     "Config",
     "default_config",

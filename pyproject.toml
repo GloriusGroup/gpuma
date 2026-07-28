@@ -1,7 +1,7 @@
 [project]
 name = "gpuma"
 version = "0.6.0"
-description = "GPUMA - Geometry optimization toolkit using Fairchem UMA and ORB-v3 models with Torch-Sim"
+description = "GPUMA - Geometry optimization toolkit using Fairchem UMA, ORB-v3 and SevenNet models with Torch-Sim"
 readme = "README.md"
 requires-python = "==3.12.*"
 license = "MIT"
@@ -28,7 +28,8 @@ dependencies = [
   "hf_xet==1.2.0",
   "pyyaml==6.0.3",
   "orb-models==0.6.1",
-  "nvalchemi-toolkit-ops==0.3.1"
+  "nvalchemi-toolkit-ops==0.3.1",
+  "sevenn[torchsim]==0.13.0"
 ]
 
 [project.optional-dependencies]

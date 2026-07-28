@@ -157,11 +157,13 @@ def test_config_default_model_type():
 
 
 def test_resolve_model_type_aliases():
-    """'uma' resolves to 'fairchem', 'orb-v3' resolves to 'orb'."""
+    """'uma' resolves to 'fairchem', 'orb-v3' to 'orb', '7net' to 'sevennet'."""
     assert resolve_model_type(Config({"model": {"model_type": "fairchem"}})) == "fairchem"
     assert resolve_model_type(Config({"model": {"model_type": "uma"}})) == "fairchem"
     assert resolve_model_type(Config({"model": {"model_type": "orb"}})) == "orb"
     assert resolve_model_type(Config({"model": {"model_type": "orb-v3"}})) == "orb"
+    assert resolve_model_type(Config({"model": {"model_type": "sevennet"}})) == "sevennet"
+    assert resolve_model_type(Config({"model": {"model_type": "7net"}})) == "sevennet"
 
 
 def test_resolve_model_type_case_insensitive():

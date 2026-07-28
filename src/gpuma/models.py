@@ -9,7 +9,7 @@ interatomic potentials:
   GPU-accelerated batch optimization.
 
 Both functions inspect ``config.model.model_type`` and dispatch to
-the appropriate backend (Fairchem UMA or ORB-v3).
+the appropriate backend (Fairchem UMA, ORB-v3, or SevenNet).
 
 Supported backends
 ------------------
@@ -17,13 +17,30 @@ Supported backends
   ``fairchem-core`` and ``torch-sim-atomistic``.
 - **ORB-v3** (``model_type="orb"`` or ``"orb-v3"``): Uses the
   ``orb-models`` package.
+- **SevenNet** (``model_type="sevennet"`` or ``"7net"``): Uses the
+  ``sevenn`` package's ``sevenn.torchsim``/``sevenn.calculator``
+  integrations (re-exported by ``torch_sim.models.sevennet``).
 
-DFT-D3(BJ) dispersion correction can be enabled for both backends via
-``config.model.d3_correction = True``.  ORB models use orb-models'
-native ``D3SumModel``; Fairchem/UMA models are layered with torch-sim's
-``D3DispersionModel`` (added in torch-sim 0.6.0) via ``SumModel`` for
-the batch path and via a thin ASE wrapper for the single-structure path.
-Both share the same ``nvalchemiops`` GPU kernel underneath.
+DFT-D3(BJ) dispersion correction can be enabled for the ORB and Fairchem
+backends via ``config.model.d3_correction = True``.  ORB models use
+orb-models' native ``D3SumModel``; Fairchem/UMA models are layered with
+torch-sim's ``D3DispersionModel`` (added in torch-sim 0.6.0) via
+``SumModel`` for the batch path and via a thin ASE wrapper for the
+single-structure path. Both share the same ``nvalchemiops`` GPU kernel
+underneath. SevenNet ships its own D3 implementation (``SevenNetD3Model``
+for the batch path, ``SevenNetD3Calculator`` for the single-structure
+path), which gpuma reuses when ``d3_correction`` is enabled.
+
+Notes on SevenNet
+-----------------
+SevenNet is primarily a materials (periodic) potential.  It has no
+charge/spin channel, so a :class:`~gpuma.structure.Structure`'s ``charge``
+and ``multiplicity`` are ignored by SevenNet predictions.  Multi-modal
+checkpoints (``7net-mf-ompa``, ``7net-omni``) expose molecular fidelities
+(e.g. ``omol25_high``, ``spice``) selected via ``config.model.model_modal``.
+SevenNet only supports ``float32``; because gpuma's batch pipeline runs in
+``float64``, the torch-sim model is wrapped in ``sevenn``'s
+``Float64Wrapper`` so state tensors are cast around the model.
 """
 
 from __future__ import annotations
@@ -87,6 +104,23 @@ AVAILABLE_ORB_MODELS: tuple[str, ...] = (
     "orb_v3_conservative_inf_mpa",
     "orb_v3_direct_20_mpa",
     "orb_v3_direct_inf_mpa",
+)
+
+#: SevenNet pretrained model names accepted by ``sevenn`` (``sevenn.util``
+#: ``pretrained_name_to_path``).  Multi-modal checkpoints (``7net-mf-ompa``,
+#: ``7net-omni``) additionally require ``config.model.model_modal`` to pick a
+#: fidelity.  A local checkpoint may instead be supplied via
+#: ``config.model.model_path``.
+AVAILABLE_SEVENNET_MODELS: tuple[str, ...] = (
+    "7net-0",
+    "7net-0_22may2024",
+    "7net-l3i5",
+    "7net-mf-0",
+    "7net-mf-ompa",
+    "7net-omat",
+    "7net-omni",
+    "7net-omni-i8",
+    "7net-omni-i12",
 )
 
 # ---------------------------------------------------------------------------
@@ -193,6 +227,28 @@ def _setup_orb_device(device: str) -> None:
         idx = int(normalized.split(":")[1])
         torch.cuda.set_device(idx)
         logger.info("Selected GPU %d for ORB backend.", idx)
+
+
+def _setup_sevennet_device(device: str) -> str:
+    """Prepare the CUDA device for the SevenNet backend.
+
+    SevenNet's ``SevenNetModel`` / ``SevenNetCalculator`` resolve a device
+    string via :func:`torch.device`, so a ``"cuda:N"`` string is honoured
+    directly. We additionally call :func:`torch.cuda.set_device` so that any
+    internal ``.to("cuda")`` calls and the D3 kernels pick the requested GPU.
+
+    Returns
+    -------
+    str
+        The normalized device string (``"cpu"`` or ``"cuda[:N]"``), safe to
+        pass to the SevenNet APIs.
+    """
+    normalized = _parse_device_string(device)
+    if normalized.startswith("cuda") and ":" in normalized:
+        idx = int(normalized.split(":")[1])
+        torch.cuda.set_device(idx)
+        logger.info("Selected GPU %d for SevenNet backend.", idx)
+    return normalized
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +437,8 @@ def load_calculator(config: Config):
     model_type = resolve_model_type(config)
     if model_type == "orb":
         return _load_orb_calculator(config)
+    if model_type == "sevennet":
+        return _load_sevennet_calculator(config)
     return _load_fairchem_calculator(config)
 
 
@@ -411,6 +469,8 @@ def load_torchsim_model(config: Config):
     model_type = resolve_model_type(config)
     if model_type == "orb":
         return _load_orb_torchsim(config)
+    if model_type == "sevennet":
+        return _load_sevennet_torchsim(config)
     return _load_fairchem_torchsim(config)
 
 
@@ -568,3 +628,123 @@ def _load_orb_torchsim(config: Config) -> Any:
 
     orbff, atoms_adapter, device = _load_orb_pretrained(config)
     return OrbTorchSimModel(orbff, atoms_adapter, device=device)
+
+
+# ---------------------------------------------------------------------------
+# SevenNet backend
+# ---------------------------------------------------------------------------
+
+
+def _resolve_sevennet_model_arg(config: Config) -> tuple[Any, str | None]:
+    """Return ``(model_arg, modal)`` for the SevenNet backend.
+
+    ``model_arg`` is either a local checkpoint :class:`~pathlib.Path` (when
+    ``config.model.model_path`` points at an existing file) or a validated
+    pretrained model-name string from :data:`AVAILABLE_SEVENNET_MODELS`.
+
+    ``modal`` is the optional multi-modal fidelity selector
+    (``config.model.model_modal``), required for checkpoints such as
+    ``7net-mf-ompa`` and ``7net-omni``.
+    """
+    modal = config.model.get("model_modal", None)
+    modal = str(modal) if modal else None
+
+    model_path = _verify_model_path(config)
+    if model_path is not None:
+        return model_path, modal
+
+    model_name, _ = _verify_model_name_and_cache_dir(config)
+    if model_name not in AVAILABLE_SEVENNET_MODELS:
+        raise ValueError(
+            f"Unknown SevenNet model name {model_name!r}. "
+            f"Must be one of {list(AVAILABLE_SEVENNET_MODELS)}, or supply a "
+            "local checkpoint via config.model.model_path."
+        )
+    return model_name, modal
+
+
+def _load_sevennet_calculator(config: Config) -> Any:
+    """Load a ``SevenNetCalculator`` from a pretrained SevenNet model.
+
+    When ``config.model.d3_correction`` is True the ``SevenNetD3Calculator``
+    is used instead, which adds SevenNet's native DFT-D3 energy/force/stress
+    contributions on top of every prediction.
+    """
+    # Validate the model name/path before importing sevenn so that an unknown
+    # model raises a clear ValueError even when the optional dep is missing.
+    model_arg, modal = _resolve_sevennet_model_arg(config)
+
+    try:
+        from sevenn.calculator import (  # type: ignore
+            SevenNetCalculator,
+            SevenNetD3Calculator,
+        )
+    except ImportError as exc:
+        raise ImportError(
+            "sevenn>=0.12.1 is required for SevenNet model support. "
+            "Install it with: pip install 'sevenn[torchsim]>=0.12.1'"
+        ) from exc
+
+    device = _setup_sevennet_device(str(config.technical.device))
+
+    if config.model.d3_correction:
+        functional = str(config.model.d3_functional).lower()
+        logger.info(
+            "Applying SevenNet native D3 dispersion correction (functional=%s)",
+            functional,
+        )
+        return SevenNetD3Calculator(
+            model=model_arg,
+            device=device,
+            modal=modal,
+            functional_name=functional,
+        )
+    return SevenNetCalculator(model=model_arg, device=device, modal=modal)
+
+
+def _load_sevennet_torchsim(config: Config) -> Any:
+    """Load a SevenNet torch-sim model for batch optimization.
+
+    SevenNet only supports ``float32`` while gpuma's batch pipeline runs in
+    ``float64``; the model is therefore wrapped in ``sevenn``'s
+    ``Float64Wrapper`` so that state tensors are cast to ``float32`` around
+    the model and outputs cast back to ``float64``.
+
+    When ``config.model.d3_correction`` is True, ``SevenNetD3Model`` (SevenNet
+    plus its native batched D3 kernel) is used before wrapping.
+    """
+    # Validate the model name/path before importing sevenn so that an unknown
+    # model raises a clear ValueError even when the optional dep is missing.
+    model_arg, modal = _resolve_sevennet_model_arg(config)
+
+    try:
+        from sevenn.torchsim import (  # type: ignore
+            Float64Wrapper,
+            SevenNetD3Model,
+            SevenNetModel,
+        )
+    except ImportError as exc:
+        raise ImportError(
+            "sevenn[torchsim]>=0.12.1 is required for SevenNet batch support. "
+            "Install it with: pip install 'sevenn[torchsim]>=0.12.1'"
+        ) from exc
+
+    device = _setup_sevennet_device(str(config.technical.device))
+
+    if config.model.d3_correction:
+        functional = str(config.model.d3_functional).lower()
+        logger.info(
+            "Applying SevenNet native D3 dispersion correction (functional=%s)",
+            functional,
+        )
+        model = SevenNetD3Model(
+            model_arg,
+            modal=modal,
+            device=device,
+            functional_name=functional,
+        )
+    else:
+        model = SevenNetModel(model_arg, modal=modal, device=device)
+
+    # gpuma builds float64 batched states; SevenNet is float32-only.
+    return Float64Wrapper(model)
