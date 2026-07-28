@@ -68,7 +68,7 @@ if "nvalchemiops.interactions.dispersion.dftd3" not in _sys.modules:
     _sys.modules["nvalchemiops.interactions.dispersion.dftd3"] = _dftd3
 
 from ..config import Config, resolve_model_type
-from ..decorators import time_it
+from ..utils.decorators import time_it
 from .base import (
     AVAILABLE_FAIRCHEM_MODELS,
     AVAILABLE_ORB_MODELS,

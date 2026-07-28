@@ -21,8 +21,8 @@ from ase import Atoms
 from ase.optimize import BFGS, FIRE, LBFGS
 
 from .config import DEFAULT_CONFIG, Config, load_config_from_file, resolve_model_type
-from .decorators import timed_block
-from .logging_utils import log_optimization_summary
+from .utils.decorators import timed_block
+from .utils.logging_utils import log_optimization_summary
 from .models import _parse_device_string, load_calculator, load_torchsim_model
 from .structure import Structure
 

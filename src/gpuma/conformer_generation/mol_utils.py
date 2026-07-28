@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from ase.data import chemical_symbols
 
-from ..decorators import time_it
+from ..utils.decorators import time_it
 from ..structure import Structure
 
 if TYPE_CHECKING:  # pragma: no cover - annotation only, avoids importing torch

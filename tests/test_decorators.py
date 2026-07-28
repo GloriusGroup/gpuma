@@ -3,7 +3,7 @@
 import logging
 import time
 
-from gpuma.decorators import time_it, timed_block
+from gpuma.utils.decorators import time_it, timed_block
 
 
 def test_time_it(caplog):
@@ -13,7 +13,7 @@ def test_time_it(caplog):
         time.sleep(0.01)
         return 42
 
-    with caplog.at_level(logging.INFO, logger="gpuma.decorators"):
+    with caplog.at_level(logging.INFO, logger="gpuma.utils.decorators"):
         result = dummy()
 
     assert result == 42
@@ -34,7 +34,7 @@ def test_time_it_wraps():
 
 def test_timed_block_logs_and_stores_elapsed(caplog):
     """timed_block logs the block name and stores elapsed time."""
-    with caplog.at_level(logging.INFO, logger="gpuma.decorators"):
+    with caplog.at_level(logging.INFO, logger="gpuma.utils.decorators"):
         with timed_block("test operation") as tb:
             time.sleep(0.01)
 
@@ -44,7 +44,7 @@ def test_timed_block_logs_and_stores_elapsed(caplog):
 
 def test_timed_block_custom_level(caplog):
     """timed_block respects a custom logging level."""
-    with caplog.at_level(logging.DEBUG, logger="gpuma.decorators"):
+    with caplog.at_level(logging.DEBUG, logger="gpuma.utils.decorators"):
         with timed_block("debug op", level=logging.DEBUG) as tb:
             pass
 

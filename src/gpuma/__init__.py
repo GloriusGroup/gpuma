@@ -29,8 +29,8 @@ from .config import (
     resolve_model_type,
     save_config_to_file,
 )
-from .decorators import time_it, timed_block
-from .io_handler import (
+from .utils.decorators import time_it, timed_block
+from .utils.io_handler import (
     read_multi_xyz,
     read_xyz,
     read_xyz_directory,

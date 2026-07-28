@@ -36,7 +36,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import gpuma
 from gpuma.config import load_config_from_file
-from gpuma.decorators import capture_timings
+from gpuma.utils.decorators import capture_timings
 from gpuma.conformer_generation import generate_ensembles
 
 _HERE = os.path.dirname(__file__)

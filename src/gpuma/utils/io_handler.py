@@ -13,16 +13,16 @@ import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from .conformer_generation import (
+from ..conformer_generation import (
     smiles_to_conformer_ensemble as _smiles_to_ensemble_util,
 )
-from .conformer_generation import (
+from ..conformer_generation import (
     smiles_to_structure as _smiles_to_structure_util,
 )
-from .structure import Structure
+from ..structure import Structure
 
 if TYPE_CHECKING:  # pragma: no cover - annotation only, avoids importing torch
-    from .config import Config
+    from ..config import Config
 
 logger = logging.getLogger(__name__)
 
