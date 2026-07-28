@@ -62,49 +62,49 @@ Functions for directly loading model calculators and torch-sim wrappers.
 ## I/O & Structure Conversion
 Functions for reading, writing, and converting molecular structures.
 
-::: gpuma.io_handler.read_xyz
+::: gpuma.utils.io_handler.read_xyz
     options:
       show_root_heading: true
       show_root_full_path: false
       heading_level: 3
 
-::: gpuma.io_handler.read_multi_xyz
+::: gpuma.utils.io_handler.read_multi_xyz
     options:
       show_root_heading: true
       show_root_full_path: false
       heading_level: 3
 
-::: gpuma.io_handler.read_xyz_directory
+::: gpuma.utils.io_handler.read_xyz_directory
     options:
       show_root_heading: true
       show_root_full_path: false
       heading_level: 3
 
-::: gpuma.io_handler.smiles_to_xyz
+::: gpuma.utils.io_handler.smiles_to_xyz
     options:
       show_root_heading: true
       show_root_full_path: false
       heading_level: 3
 
-::: gpuma.io_handler.smiles_to_ensemble
+::: gpuma.utils.io_handler.smiles_to_ensemble
     options:
       show_root_heading: true
       show_root_full_path: false
       heading_level: 3
 
-::: gpuma.io_handler.save_xyz_file
+::: gpuma.utils.io_handler.save_xyz_file
     options:
       show_root_heading: true
       show_root_full_path: false
       heading_level: 3
 
-::: gpuma.io_handler.save_multi_xyz
+::: gpuma.utils.io_handler.save_multi_xyz
     options:
       show_root_heading: true
       show_root_full_path: false
       heading_level: 3
 
-::: gpuma.io_handler.save_as_single_xyz_files
+::: gpuma.utils.io_handler.save_as_single_xyz_files
     options:
       show_root_heading: true
       show_root_full_path: false
@@ -116,13 +116,13 @@ which is what makes the optional GPU backend worthwhile; the per-molecule
 helpers above call into them. The backend follows `technical.device` in the
 configuration and falls back to CPU when no GPU is usable.
 
-::: gpuma.embed.generate_structures
+::: gpuma.conformer_generation.embed.generate_structures
     options:
       show_root_heading: true
       show_root_full_path: false
       heading_level: 3
 
-::: gpuma.embed.generate_ensembles
+::: gpuma.conformer_generation.embed.generate_ensembles
     options:
       show_root_heading: true
       show_root_full_path: false
@@ -147,13 +147,13 @@ Lower-level functions used by the high-level API.
 
 Timing decorators and context managers for profiling.
 
-::: gpuma.decorators.time_it
+::: gpuma.utils.decorators.time_it
     options:
       show_root_heading: true
       show_root_full_path: false
       heading_level: 3
 
-::: gpuma.decorators.timed_block
+::: gpuma.utils.decorators.timed_block
     options:
       show_root_heading: true
       show_root_full_path: false

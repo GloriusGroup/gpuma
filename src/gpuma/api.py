@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 
 from .config import Config, load_config_from_file
-from .io_handler import (
+from .utils.io_handler import (
     read_multi_xyz,
     read_xyz,
     read_xyz_directory,

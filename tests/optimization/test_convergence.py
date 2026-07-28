@@ -84,7 +84,7 @@ class TestOptimizationSummary:
 
     def test_summary_logged(self, methane, orb_sequential_config, caplog):
         """Summary includes structure counts and optimizer info."""
-        with caplog.at_level(logging.INFO, logger="gpuma.logging_utils"):
+        with caplog.at_level(logging.INFO, logger="gpuma.utils.logging_utils"):
             optimize_structure_batch([methane], orb_sequential_config)
         assert "GPUMA Optimization Summary" in caplog.text
         assert "Structures input:    1" in caplog.text
@@ -101,7 +101,7 @@ class TestOptimizationSummary:
             "model": {"model_type": "orb", "model_name": "orb_v3_direct_omol"},
             "technical": {"device": DEVICE},
         })
-        with caplog.at_level(logging.INFO, logger="gpuma.logging_utils"):
+        with caplog.at_level(logging.INFO, logger="gpuma.utils.logging_utils"):
             optimize_structure_batch([methane], config)
         assert "Optimizer:           lbfgs" in caplog.text
 

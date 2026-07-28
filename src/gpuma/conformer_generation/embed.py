@@ -1,7 +1,8 @@
 """Batched SMILES -> 3D structure generation, GPU-accelerated where available.
 
 The single SMILES-to-geometry path in gpuma: the per-molecule helpers in
-:mod:`gpuma.mol_utils`, and therefore the API and CLI, delegate here.
+:mod:`gpuma.conformer_generation.mol_utils`, and therefore the API and CLI,
+delegate here.
 :func:`generate_structures` keeps the lowest-energy conformer per molecule,
 :func:`generate_ensembles` keeps several. Both take whole lists, because the
 GPU backend parallelizes across molecules rather than within one.
@@ -19,10 +20,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from .structure import Structure
+from ..structure import Structure
 
 if TYPE_CHECKING:  # pragma: no cover - annotation only, avoids importing torch
-    from .config import Config
+    from ..config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -435,7 +436,7 @@ def _generate(
     if config is None:
         # Imported lazily: gpuma.config pulls in torch, and the CPU path here
         # has no other reason to pay that import cost.
-        from .config import load_config_from_file
+        from ..config import load_config_from_file
 
         config = load_config_from_file()
 

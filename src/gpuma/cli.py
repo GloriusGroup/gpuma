@@ -29,13 +29,13 @@ from .api import (
     optimize_single_xyz_file,
 )
 from .config import Config, load_config_from_file, save_config_to_file
-from .io_handler import (
+from .utils.io_handler import (
     save_multi_xyz,
     save_xyz_file,
     smiles_to_ensemble,
     smiles_to_xyz,
 )
-from .logging_utils import configure_logging
+from .utils.logging_utils import configure_logging
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)

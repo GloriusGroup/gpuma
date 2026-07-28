@@ -11,7 +11,7 @@ import copy
 import pytest
 
 from gpuma.config import Config, load_config_from_file
-from gpuma.embed import (
+from gpuma.conformer_generation.embed import (
     CONF_BUDGET,
     _conf_budget,
     _force_field_for,
@@ -369,7 +369,7 @@ def test_explicit_cpu_never_raises_on_fallback_flag(cpu_config):
 
 def test_mol_utils_smiles_to_structure_delegates(cpu_config):
     """The per-molecule helper returns the same geometry shape as the batch API."""
-    from gpuma.mol_utils import smiles_to_structure
+    from gpuma.conformer_generation.mol_utils import smiles_to_structure
 
     structure = smiles_to_structure(ETHANOL, config=cpu_config)
     assert isinstance(structure, Structure)
@@ -378,7 +378,7 @@ def test_mol_utils_smiles_to_structure_delegates(cpu_config):
 
 def test_mol_utils_ensemble_delegates(cpu_config):
     """The per-molecule ensemble helper caps at max_num_confs."""
-    from gpuma.mol_utils import smiles_to_conformer_ensemble
+    from gpuma.conformer_generation.mol_utils import smiles_to_conformer_ensemble
 
     structures = smiles_to_conformer_ensemble(
         BENZOIC_ACID, max_num_confs=2, config=cpu_config
@@ -389,7 +389,7 @@ def test_mol_utils_ensemble_delegates(cpu_config):
 
 def test_mol_utils_raises_on_invalid_smiles(cpu_config):
     """The per-molecule helpers keep raising, unlike the batch API's None."""
-    from gpuma.mol_utils import smiles_to_structure
+    from gpuma.conformer_generation.mol_utils import smiles_to_structure
 
     with pytest.raises(ValueError):
         smiles_to_structure(INVALID_SMILES, config=cpu_config)

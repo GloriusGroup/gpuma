@@ -6,8 +6,8 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .config import Config
-    from .structure import Structure
+    from ..config import Config
+    from ..structure import Structure
 
 
 def configure_logging(level: int = logging.INFO, logger_name: str | None = None) -> None:
@@ -61,7 +61,7 @@ def log_optimization_summary(
         Configuration used for the run.
 
     """
-    from .config import resolve_model_type
+    from ..config import resolve_model_type
 
     n_input = len(input_structures)
     n_output = len(results)

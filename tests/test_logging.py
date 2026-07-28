@@ -3,7 +3,7 @@
 import logging
 
 from gpuma.config import Config
-from gpuma.logging_utils import configure_logging, log_optimization_summary
+from gpuma.utils.logging_utils import configure_logging, log_optimization_summary
 from gpuma.structure import Structure
 
 
@@ -58,7 +58,7 @@ def test_log_optimization_summary(caplog):
         ),
     ]
 
-    with caplog.at_level(logging.INFO, logger="gpuma.logging_utils"):
+    with caplog.at_level(logging.INFO, logger="gpuma.utils.logging_utils"):
         log_optimization_summary(inputs, results, total_time=1.5, mode="batch", config=config)
 
     assert "GPUMA Optimization Summary" in caplog.text
@@ -74,7 +74,7 @@ def test_log_optimization_summary_no_results(caplog):
         "model": {"model_type": "orb", "model_name": "orb_v3_direct_omol"},
     })
 
-    with caplog.at_level(logging.INFO, logger="gpuma.logging_utils"):
+    with caplog.at_level(logging.INFO, logger="gpuma.utils.logging_utils"):
         log_optimization_summary([], [], total_time=0.1, mode="sequential", config=config)
 
     assert "Structures input:    0" in caplog.text
