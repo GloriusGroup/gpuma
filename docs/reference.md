@@ -116,13 +116,13 @@ which is what makes the optional GPU backend worthwhile; the per-molecule
 helpers above call into them. The backend follows `technical.device` in the
 configuration and falls back to CPU when no GPU is usable.
 
-::: gpuma.embed.generate_structures
+::: gpuma.conformer_generation.embed.generate_structures
     options:
       show_root_heading: true
       show_root_full_path: false
       heading_level: 3
 
-::: gpuma.embed.generate_ensembles
+::: gpuma.conformer_generation.embed.generate_ensembles
     options:
       show_root_heading: true
       show_root_full_path: false

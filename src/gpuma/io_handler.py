@@ -13,10 +13,10 @@ import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from .mol_utils import (
+from .conformer_generation import (
     smiles_to_conformer_ensemble as _smiles_to_ensemble_util,
 )
-from .mol_utils import (
+from .conformer_generation import (
     smiles_to_structure as _smiles_to_structure_util,
 )
 from .structure import Structure

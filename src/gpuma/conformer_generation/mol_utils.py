@@ -2,7 +2,7 @@
 
 This module provides functions for converting SMILES strings to 3D molecular
 structures and generating conformer ensembles. The per-molecule helpers here
-delegate to :mod:`gpuma.embed`, which embeds on the GPU via nvMolKit when
+delegate to :mod:`gpuma.conformer_generation.embed`, which embeds on the GPU via nvMolKit when
 ``config.technical.device`` requests a CUDA device and falls back to the CPU
 :mod:`morfeus` backend (with RDKit) otherwise.
 """
@@ -12,11 +12,11 @@ from typing import TYPE_CHECKING
 
 from ase.data import chemical_symbols
 
-from .decorators import time_it
-from .structure import Structure
+from ..decorators import time_it
+from ..structure import Structure
 
 if TYPE_CHECKING:  # pragma: no cover - annotation only, avoids importing torch
-    from .config import Config
+    from ..config import Config
 
 
 def _to_symbol_list(elements) -> list[str]:
@@ -66,11 +66,11 @@ def smiles_to_conformer_ensemble(
 ) -> list[Structure]:
     """Generate multiple conformers from a SMILES string.
 
-    Thin wrapper over :func:`gpuma.embed.generate_ensembles`, which runs on the
+    Thin wrapper over :func:`gpuma.conformer_generation.embed.generate_ensembles`, which runs on the
     GPU when ``config.technical.device`` asks for one and falls back to morfeus
     on the CPU otherwise. Conformers are pruned by RMSD and sorted by energy.
 
-    For more than one molecule prefer :func:`gpuma.embed.generate_ensembles`
+    For more than one molecule prefer :func:`gpuma.conformer_generation.embed.generate_ensembles`
     directly -- it batches, which is what makes the GPU backend worthwhile.
 
     Parameters
@@ -148,7 +148,7 @@ def smiles_to_structure(smiles: str, config: "Config | None" = None) -> Structur
     """Convert a SMILES string to a single 3D molecular structure.
 
     Returns the lowest-energy conformer. For more than one molecule prefer
-    :func:`gpuma.embed.generate_structures` directly -- it batches, which is
+    :func:`gpuma.conformer_generation.embed.generate_structures` directly -- it batches, which is
     what makes the GPU backend worthwhile.
     """
     if not smiles or not smiles.strip():
