@@ -78,6 +78,25 @@ gpuma batch --multi-xyz examples/example_input_xyzs/multi_xyz_file.xyz --output 
 gpuma batch --xyz-dir examples/example_input_xyzs/multi_xyz_dir/ --output batch_dir_orb.xyz --config examples/config_orb.json
 ```
 
+### Using SevenNet models
+
+To use SevenNet, set `"model_type": "sevennet"` (alias `"7net"`) in your
+config file (see `examples/config_sevennet.json`). Multi-modal checkpoints
+such as `7net-omni` also need a `"model_modal"` fidelity (e.g.
+`"omol25_high"`) in the `model` section. The commands are identical to the
+other backends, just pointed at a SevenNet config:
+
+```bash
+# Single optimization with SevenNet
+gpuma optimize --smiles "CCO" --output output.xyz --config examples/config_sevennet.json
+
+# Batch optimization from a directory of XYZ files with SevenNet
+gpuma batch --xyz-dir examples/example_input_xyzs/multi_xyz_dir/ --output batch_dir_7net.xyz --config examples/config_sevennet.json
+```
+
+You can also select SevenNet with the `--model-type` flag
+(`--model-type sevennet` or `--model-type 7net`), just like the other backends.
+
 **Note:**
 - If `--config` is not specified, `config.json` in the current directory is loaded by default.
 - Direct CLI flags are supported, but using a config file is preferred for all workflows.
@@ -98,8 +117,8 @@ gpuma batch --xyz-dir examples/example_input_xyzs/multi_xyz_dir/ --output batch_
 
 The config file is organized into four sections: `optimization` (batch
 settings, convergence, charge/multiplicity), `model` (backend, name,
-tokens, D3), `conformer_generation` (conformer count, seed), and
-`technical` (device, memory padding, logging).
+SevenNet modal, tokens, D3), `conformer_generation` (conformer count, seed),
+and `technical` (device, memory padding, logging).
 See [Configuration](config.md) for details.
 
 You can control the compute device globally in the config or from the CLI with `--device` (which overrides the config).

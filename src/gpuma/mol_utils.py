@@ -1,8 +1,10 @@
 """Molecular utilities for SMILES processing and structure generation in GPUMA.
 
 This module provides functions for converting SMILES strings to 3D molecular
-structures and generating conformer ensembles using the :mod:`morfeus` library
-with RDKit.
+structures and generating conformer ensembles. The per-molecule helpers here
+delegate to :mod:`gpuma.embed`, which embeds on the GPU via nvMolKit when
+``config.technical.device`` requests a CUDA device and falls back to the CPU
+:mod:`morfeus` backend (with RDKit) otherwise.
 """
 
 from numbers import Integral

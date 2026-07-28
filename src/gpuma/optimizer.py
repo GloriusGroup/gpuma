@@ -7,8 +7,8 @@ Provides two public functions:
 - :func:`optimize_structure_batch` — optimize a list of structures, either
   sequentially or via GPU-accelerated torch-sim batch optimization.
 
-Both Fairchem UMA and ORB-v3 backends are supported; the backend is selected
-automatically from the configuration.
+The Fairchem UMA, ORB-v3 and SevenNet backends are supported; the backend is
+selected automatically from the configuration.
 """
 
 from __future__ import annotations

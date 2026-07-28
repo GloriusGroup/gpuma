@@ -9,20 +9,24 @@
 GPUMA is a minimalist Python toolkit for facile and rapid high-throughput molecular geometry optimization
 based on machine-learning interatomic potentials (MLIPs).
 
-Two model backends are supported out of the box:
+Three model backends are supported out of the box:
 
 - **Fairchem UMA** ([UMA/OMol25](https://arxiv.org/abs/2505.08762)) — the default backend.
 - **ORB-v3** ([orbital-materials/orb-models](https://github.com/orbital-materials/orb-models)) — included in core dependencies.
+- **SevenNet** ([SevenNet](https://github.com/MDIL-SNU/SevenNet)) — included in core dependencies, with support for multi-modal checkpoints such as `7net-omni`.
 
-Both backends support optional DFT-D3(BJ) dispersion correction.
+All three backends support optional DFT-D3(BJ) dispersion correction.
 
 GPUMA is especially designed for batch optimizations of many structures (conformer ensembles, datasets) on GPU,
 ensuring efficient parallelization and maximum GPU utilization by leveraging the [torch-sim library](https://arxiv.org/abs/2508.06628).
 It wraps model backends and torch-sim functionality to provide both a simple command-line
 interface (CLI) and a small but expressive Python API for single- and multi-structure optimizations.
 
-If conformer sampling is desired, GPUMA can generate conformer ensembles on the fly from SMILES strings
-using the [morfeus library](https://digital-chemistry-laboratory.github.io/morfeus/). Alternative input formats
+If conformer sampling is desired, GPUMA can generate conformer ensembles on the fly from SMILES strings.
+The SMILES → 3D embedding runs on the GPU via [nvMolKit](https://nvidia-bionemo.github.io/nvMolKit/)
+when a CUDA device is configured, and on the CPU via the
+[morfeus library](https://digital-chemistry-laboratory.github.io/morfeus/) otherwise; the backend is
+selected from `technical.device`. Alternative input formats
 are described in the CLI section below.
 
 Feedback and improvements are always welcome!
@@ -34,8 +38,9 @@ Feedback and improvements are always welcome!
 
 ### Option 1: Install from PyPI (recommended)
 
-This installs `gpuma` together with all dependencies (including both the
-Fairchem UMA and ORB-v3 backends).
+This installs `gpuma` together with all dependencies (including the
+Fairchem UMA, ORB-v3, and SevenNet backends, plus the nvMolKit GPU
+conformer-embedding backend).
 At the moment, installation and tests have only been
 validated under Python 3.12; using other Python versions is currently
 considered experimental.
@@ -83,6 +88,15 @@ set `"model_type": "orb"` and `"model_name": "orb_v3_direct_omol"` in the
 `model` section of your configuration file (see [Configuration](config.md)
 and `examples/config_orb.json`).
 
+### SevenNet support
+
+SevenNet models are included in the standard installation. To use them,
+set `"model_type": "sevennet"` (alias `"7net"`) and a `"model_name"` such as
+`"7net-omni"` in the `model` section of your configuration file. Multi-modal
+checkpoints (e.g. `7net-omni`, `7net-mf-ompa`) additionally require a
+`"model_modal"` fidelity such as `"omol25_high"` (see [Configuration](config.md)
+and `examples/config_sevennet.json`).
+
 
 ### Option 2: Install from source
 
@@ -122,15 +136,17 @@ Please refer to the documentation for detailed usage examples and API reference.
 
 ## Known limitations
 
-When a run is started from SMILES, an RDKit force field (via the morfeus library) is used to generate an initial structure. Spin is not taken into account during this step, so the initial estimated geometries can be incorrect. When the MLIP models are applied subsequently, the structure can sometimes be optimized to a maximum rather than a minimum because the model is not provided with Hessian matrices. This behavior only affects runs originating from SMILES; it does not occur with better starting geometries (e.g., when starting from XYZ files).
+When a run is started from SMILES, an RDKit/MMFF force field (via nvMolKit on GPU or the morfeus library on CPU) is used to generate an initial structure. Spin is not taken into account during this step, so the initial estimated geometries can be incorrect. When the MLIP models are applied subsequently, the structure can sometimes be optimized to a maximum rather than a minimum because the model is not provided with Hessian matrices. This behavior only affects runs originating from SMILES; it does not occur with better starting geometries (e.g., when starting from XYZ files).
 
 ## Troubleshooting
 - Missing libraries: install optional dependencies like `pyyaml` if you use YAML configs.
 - Fairchem/UMA: ensure network access for model downloads and optionally set or provide
 `huggingface_token` (e.g., via a token file) to access the UMA model family.
 - ORB-v3: set `"model_type": "orb"` in the `model` section of your config.
+- SevenNet: set `"model_type": "sevennet"` in the `model` section of your
+  config; multi-modal checkpoints also need a `"model_modal"` fidelity.
 - D3 dispersion correction: enable with `"d3_correction": true` in the
-  config — works for both ORB and Fairchem/UMA models (see
+  config — works for the ORB, Fairchem/UMA, and SevenNet backends (see
   [Configuration](config.md)).
 
 ## License

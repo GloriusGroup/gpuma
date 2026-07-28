@@ -21,8 +21,8 @@ Supported backends
   ``sevenn`` package's ``sevenn.torchsim``/``sevenn.calculator``
   integrations (re-exported by ``torch_sim.models.sevennet``).
 
-DFT-D3(BJ) dispersion correction can be enabled for the ORB and Fairchem
-backends via ``config.model.d3_correction = True``.  ORB models use
+DFT-D3(BJ) dispersion correction can be enabled for the ORB, Fairchem and
+SevenNet backends via ``config.model.d3_correction = True``.  ORB models use
 orb-models' native ``D3SumModel``; Fairchem/UMA models are layered with
 torch-sim's ``D3DispersionModel`` (added in torch-sim 0.6.0) via
 ``SumModel`` for the batch path and via a thin ASE wrapper for the
@@ -414,7 +414,7 @@ class _FairchemD3Calculator:
 def load_calculator(config: Config):
     """Load an ASE-compatible calculator for single-structure optimization.
 
-    Dispatches to the Fairchem or ORB-v3 backend based on
+    Dispatches to the Fairchem, ORB-v3, or SevenNet backend based on
     ``config.model.model_type``.
 
     Parameters
@@ -425,7 +425,8 @@ def load_calculator(config: Config):
     Returns
     -------
     calculator
-        An ASE calculator (``FAIRChemCalculator`` or ``ORBCalculator``).
+        An ASE calculator (``FAIRChemCalculator``, ``ORBCalculator`` or
+        ``SevenNetCalculator``).
 
     Raises
     ------
@@ -446,7 +447,7 @@ def load_calculator(config: Config):
 def load_torchsim_model(config: Config):
     """Load a torch-sim model wrapper for GPU-accelerated batch optimization.
 
-    Dispatches to the Fairchem or ORB-v3 backend based on
+    Dispatches to the Fairchem, ORB-v3, or SevenNet backend based on
     ``config.model.model_type``.
 
     Parameters
@@ -457,7 +458,8 @@ def load_torchsim_model(config: Config):
     Returns
     -------
     model
-        A torch-sim model (``FairChemModel`` or ``OrbTorchSimModel``).
+        A torch-sim model (``FairChemModel``, ``OrbTorchSimModel`` or a
+        ``Float64Wrapper``-wrapped SevenNet model).
 
     Raises
     ------

@@ -5,7 +5,7 @@ The configuration is organized into four top-level sections:
 | Section | Purpose |
 |---|---|
 | `optimization` | Batch mode, convergence criteria, charge & multiplicity |
-| `model` | Model backend, name, checkpoints, tokens, D3 correction |
+| `model` | Model backend, name, SevenNet modal, checkpoints, tokens, D3 correction |
 | `conformer_generation` | Conformer count and random seed |
 | `technical` | Device selection, memory & autobatcher knobs, logging |
 
@@ -31,6 +31,7 @@ Unknown fields are preserved. **Always use a config file for CLI and API calls.*
   "model": {
     "model_type": "fairchem",
     "model_name": "uma-s-1p2",
+    "model_modal": null,
 
     "model_path": null,
     "model_cache_dir": null,
@@ -75,13 +76,34 @@ Unknown fields are preserved. **Always use a config file for CLI and API calls.*
 }
 ```
 
+## Minimal Example (JSON, SevenNet)
+
+For multi-modal checkpoints such as `7net-omni` or `7net-mf-ompa`, a
+`model_modal` fidelity must be supplied. Single-modal checkpoints (e.g.
+`7net-0`) ignore it.
+
+```json
+{
+  "model": {
+    "model_type": "sevennet",
+    "model_name": "7net-omni",
+    "model_modal": "omol25_high"
+  },
+  "technical": {
+    "device": "cuda"
+  }
+}
+```
+
 ## D3 Dispersion Correction
 
-DFT-D3(BJ) dispersion correction is supported for **both** ORB-v3 and
-Fairchem/UMA backends.  Internally ORB uses orb-models' native
+DFT-D3(BJ) dispersion correction is supported for the ORB-v3,
+Fairchem/UMA, and SevenNet backends.  Internally ORB uses orb-models' native
 ``D3SumModel`` and Fairchem uses torch-sim's ``D3DispersionModel``
 (via ``SumModel`` in batch mode); both share the same
-``nvalchemiops`` GPU kernel.
+``nvalchemiops`` GPU kernel. SevenNet uses its own native D3 implementation
+(``SevenNetD3Model`` for the batch path, ``SevenNetD3Calculator`` for the
+single-structure path).
 
 ```json
 {
@@ -131,6 +153,7 @@ optimization:
 model:
   model_type: fairchem
   model_name: uma-s-1p2
+  model_modal: null
 
   model_path: null
   model_cache_dir: null
@@ -176,14 +199,15 @@ technical:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `model_type` | `"fairchem"` | Backend: `"fairchem"` / `"uma"` or `"orb"` / `"orb-v3"` |
+| `model_type` | `"fairchem"` | Backend: `"fairchem"` / `"uma"`, `"orb"` / `"orb-v3"`, or `"sevennet"` / `"7net"` |
 | `model_name` | `"uma-s-1p2"` | Model identifier (see [Available Models](#available-models)) |
-| `model_path` | `null` | Local checkpoint path (Fairchem only; overrides `model_name`) |
+| `model_modal` | `null` | SevenNet multi-modal fidelity selector. Valid values depend on the checkpoint (`7net-omni`: e.g. `"omol25_high"`, `"omol25_low"`, `"spice"`, `"qcml"`; `7net-mf-ompa`: `"mpa"`, `"omat24"`). Required for multi-modal checkpoints; ignored by single-modal checkpoints and by other backends |
+| `model_path` | `null` | Local checkpoint path (Fairchem and SevenNet; overrides `model_name`) |
 | `model_cache_dir` | `null` | Directory for cached model downloads |
 | `huggingface_token` | `null` | HuggingFace token for model access |
 | `huggingface_token_file` | `null` | File path to read the HF token from |
-| `d3_correction` | `false` | Enable D3 dispersion correction. Supported for both ORB and Fairchem/UMA |
-| `d3_functional` | `"PBE"` | DFT functional for D3 correction (BJ-damping table from orb-models) |
+| `d3_correction` | `false` | Enable D3 dispersion correction. Supported for the ORB, Fairchem/UMA, and SevenNet backends |
+| `d3_functional` | `"PBE"` | DFT functional for D3 correction (ORB/Fairchem use the orb-models BJ-damping table; SevenNet uses its own native D3) |
 | `d3_damping` | `"BJ"` | Damping scheme for D3 correction (`"BJ"` or `"BJM"`) |
 
 ### `conformer_generation`
@@ -237,17 +261,38 @@ Use the **underscored** form as `model_name`.
 | `orb_v3_conservative_20_mpa` | ORB-v3 conservative, 20-layer mpa |
 | `orb_v3_conservative_inf_mpa` | ORB-v3 conservative, inf mpa |
 
-> D3 dispersion correction can be enabled for any ORB or Fairchem/UMA model with `d3_correction: true`.
+### SevenNet (`model_type: "sevennet"`)
+
+Multi-modal checkpoints (`7net-mf-ompa`, `7net-omni`, `7net-omni-i8`,
+`7net-omni-i12`) also require a `model_modal` fidelity whose valid values
+depend on the checkpoint (e.g. `omol25_high`, `omol25_low`, `spice`, `qcml`
+for `7net-omni`; `mpa`, `omat24` for `7net-mf-ompa`). A local checkpoint may
+instead be supplied via `model_path`.
+
+| Model Name | Description |
+|---|---|
+| `7net-0` | SevenNet-0 (single-modal) |
+| `7net-0_22may2024` | SevenNet-0, 22 May 2024 checkpoint |
+| `7net-l3i5` | SevenNet l3i5 |
+| `7net-mf-0` | SevenNet multi-fidelity 0 |
+| `7net-mf-ompa` | SevenNet multi-fidelity OMPA (multi-modal) |
+| `7net-omat` | SevenNet OMat |
+| `7net-omni` | SevenNet Omni (multi-modal) |
+| `7net-omni-i8` | SevenNet Omni i8 (multi-modal) |
+| `7net-omni-i12` | SevenNet Omni i12 (multi-modal) |
+
+> D3 dispersion correction can be enabled for any ORB, Fairchem/UMA, or SevenNet model with `d3_correction: true`.
 
 These model names are also available programmatically as
-`gpuma.AVAILABLE_FAIRCHEM_MODELS` and `gpuma.AVAILABLE_ORB_MODELS`.
+`gpuma.AVAILABLE_FAIRCHEM_MODELS`, `gpuma.AVAILABLE_ORB_MODELS`, and
+`gpuma.AVAILABLE_SEVENNET_MODELS`.
 
 ---
 
 See the `examples/` folder for:
 - Single optimization (`example_single_optimization.py`)
 - Ensemble / batch optimization (`example_ensemble_optimization.py`)
-- Dispersion (D3) correction with both backends (`example_dispersion.py`)
+- Dispersion (D3) correction with Fairchem and ORB (`example_dispersion.py`)
 - Full multi-axis benchmark across models / optimizers / convergence (`full_benchmark.py`)
 
 The example configs are sanitized (no tokens in plain text).

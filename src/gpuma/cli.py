@@ -1,7 +1,7 @@
 """Command Line Interface for GPUMA.
 
 This module provides a command-line interface for molecular geometry
-optimization using Fairchem UMA or ORB-v3 models.  The CLI supports
+optimization using Fairchem UMA, ORB-v3 or SevenNet models.  The CLI supports
 three main optimization modes:
 
 1. Single Structure Optimization: Optimize individual molecular structures.
@@ -10,8 +10,10 @@ three main optimization modes:
 3. Batch Optimization (Files): Optimize multiple structures from multi-XYZ
    files or directories.
 
-The model backend is selected via ``--model-type`` or the ``model_type``
-configuration key (``"fairchem"``/``"uma"`` or ``"orb"``/``"orb-v3"``).
+The model backend is selected via the ``model_type`` configuration key
+(``"fairchem"``/``"uma"``, ``"orb"``/``"orb-v3"``, or ``"sevennet"``/``"7net"``).
+The ``--model-type`` CLI flag can override it for any backend
+(``fairchem``/``uma``, ``orb``/``orb-v3``, ``sevennet``/``7net``).
 """
 
 import argparse
@@ -77,7 +79,9 @@ def setup_parser() -> argparse.ArgumentParser:
 
     """
     parser = argparse.ArgumentParser(
-        description=("GPUMA - Optimize molecular structures using Fairchem UMA or ORB-v3 models"),
+        description=(
+            "GPUMA - Optimize molecular structures using Fairchem UMA, ORB-v3 or SevenNet models"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 OPTIMIZATION MODES:
@@ -346,10 +350,11 @@ UTILITY COMMANDS:
     parser.add_argument(
         "--model-type",
         type=str,
-        choices=["fairchem", "uma", "orb", "orb-v3"],
+        choices=["fairchem", "uma", "orb", "orb-v3", "sevennet", "7net"],
         help=(
             "Override model backend from config. "
-            "'fairchem'/'uma' for Fairchem UMA models, 'orb'/'orb-v3' for ORB-v3 models."
+            "'fairchem'/'uma' for Fairchem UMA models, 'orb'/'orb-v3' for ORB-v3 models, "
+            "'sevennet'/'7net' for SevenNet models."
         ),
     )
 

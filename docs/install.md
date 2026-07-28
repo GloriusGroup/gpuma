@@ -30,6 +30,20 @@ present and will not replace it:
 pip install gpuma
 ```
 
+This pulls in all model backends (Fairchem UMA, ORB-v3, and SevenNet) as
+core dependencies — there is no separate optional extra to install.
+
+### GPU conformer embedding
+
+SMILES → 3D conversion can run on the GPU via
+[nvMolKit](https://nvidia-bionemo.github.io/nvMolKit/), which is a core
+dependency and installs automatically from PyPI (it pins `rdkit==2026.3.1`
+to match the RDKit build it is linked against, so no extra package index is
+needed). The backend is selected by `technical.device`: a CUDA device uses
+nvMolKit, otherwise the CPU (morfeus) backend is used. The GPU path needs an
+NVIDIA GPU (compute capability 7.0+); on CPU-only machines the package still
+installs and the CPU backend is used.
+
 ### Environment setup examples
 
 - **Using a `uv` virtual environment**
