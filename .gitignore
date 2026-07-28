@@ -140,5 +140,9 @@ torch-sim/
 examples/example_output/*
 examples/screening_results/
 
+# Large input structure libraries (generated, excluded from VCS)
+/examples/example_input_xyzs/primary-amines_library/
+/examples/example_input_xyzs/kraken_library/
+
 uv.lock
 /.claude/

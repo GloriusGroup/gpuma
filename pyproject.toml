@@ -1,6 +1,6 @@
 [project]
 name = "gpuma"
-version = "0.6.0"
+version = "0.7.0"
 description = "GPUMA - Geometry optimization toolkit using Fairchem UMA, ORB-v3 and SevenNet models with Torch-Sim"
 readme = "README.md"
 requires-python = "==3.12.*"
@@ -19,35 +19,21 @@ classifiers = [
 
 dependencies = [
   "ase==3.27.0",
-  "torch-sim-atomistic==0.6.0",
+  "torch-sim-atomistic==0.6.1",
   "fairchem-core==2.18.0",
   "morfeus-ml==0.8.0",
-  "rdkit==2025.9.3",
+  "rdkit==2026.3.1",
   "tables==3.11.1",
   "scipy==1.17.1",
   "hf_xet==1.2.0",
   "pyyaml==6.0.3",
   "orb-models==0.6.1",
-  "nvalchemi-toolkit-ops==0.3.1",
-  "sevenn[torchsim]==0.13.0"
+  "nvalchemi-toolkit-ops==0.4.0",
+  "sevenn[torchsim]==0.13.0",
+  "nvmolkit==0.5.1"
 ]
 
 [project.optional-dependencies]
-# GPU-accelerated conformer embedding (gpuma.embed). Optional: without it the
-# CPU backend is used and results stay valid.
-#
-# nvMolKit links RDKit's shared libraries by content hash, so the wheel must be
-# built against the exact pinned RDKit above. The default PyPI wheel targets a
-# different RDKit and will fail to load, so install the matching variant from
-# NVIDIA's per-RDKit index instead of `pip install gpuma[gpu]`:
-#
-#   pip install "nvmolkit==0.5.1+rdkit2025.9.3" \
-#     --extra-index-url https://nvidia-bionemo.github.io/nvMolKit/wheels/rdkit2025.9.3/simple/
-#
-# Keep the version suffix in step with the `rdkit==` pin in [dependencies].
-gpu = [
-    "nvmolkit==0.5.1+rdkit2025.9.3",
-]
 dev = [
     "pytest>=9.0.0",
     "build>=1.2.1",
