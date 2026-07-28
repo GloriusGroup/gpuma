@@ -37,6 +37,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "model_name": "uma-s-1p2",
         "model_path": None,
         "model_cache_dir": None,
+        # SevenNet multi-modal fidelity selector (only used by model_type
+        # "sevennet"/"7net"). Required for multi-modal checkpoints such as
+        # "7net-mf-ompa" ("mpa"/"omat24") or "7net-omni" (e.g. "omol25_high",
+        # "spice"); ignored by single-modal checkpoints and other backends.
+        "model_modal": None,
         "huggingface_token": None,
         "huggingface_token_file": None,
         # D3 dispersion correction (supported for both ORB and Fairchem/UMA)
@@ -78,6 +83,8 @@ _MODEL_TYPE_ALIASES: dict[str, str] = {
     "uma": "fairchem",
     "orb": "orb",
     "orb-v3": "orb",
+    "sevennet": "sevennet",
+    "7net": "sevennet",
 }
 
 VALID_MODEL_TYPES: frozenset[str] = frozenset(_MODEL_TYPE_ALIASES)
@@ -93,6 +100,7 @@ def resolve_model_type(config: Config | dict[str, Any]) -> str:
     Accepted aliases:
     - ``"fairchem"`` / ``"uma"`` -> ``"fairchem"``
     - ``"orb"`` / ``"orb-v3"`` -> ``"orb"``
+    - ``"sevennet"`` / ``"7net"`` -> ``"sevennet"``
 
     Works with either :class:`Config` or a plain dict.
     """
