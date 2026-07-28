@@ -98,6 +98,63 @@ class TestSevenNetTorchsim:
         assert model.dtype == torch.float64
 
 
+class TestSevenNetD3Correction:
+    """DFT-D3(BJ) dispersion correction for SevenNet (sevenn's native D3)."""
+
+    @requires_gpu
+    @requires_sevenn
+    def test_d3_changes_energy(self):
+        """Enabling D3 correction produces a different energy than without."""
+        config_no_d3 = Config({
+            "model": {
+                "model_type": "sevennet",
+                "model_name": SEVENNET_TEST_MODEL,
+                "d3_correction": False,
+            },
+            "technical": {"device": DEVICE},
+        })
+        config_d3 = Config({
+            "model": {
+                "model_type": "sevennet",
+                "model_name": SEVENNET_TEST_MODEL,
+                "d3_correction": True,
+                "d3_functional": "PBE",
+                "d3_damping": "BJ",
+            },
+            "technical": {"device": DEVICE},
+        })
+
+        atoms1 = METHANE.copy()
+        atoms1.calc = load_calculator(config_no_d3)
+        e_no_d3 = atoms1.get_potential_energy()
+
+        atoms2 = METHANE.copy()
+        atoms2.calc = load_calculator(config_d3)
+        e_d3 = atoms2.get_potential_energy()
+
+        assert e_no_d3 != e_d3, "D3 correction should change energy"
+
+    @requires_gpu
+    @requires_sevenn
+    def test_d3_torchsim_load(self):
+        """SevenNet torch-sim model loads with D3 correction enabled (batch path)."""
+        import torch
+
+        config = Config({
+            "model": {
+                "model_type": "sevennet",
+                "model_name": SEVENNET_TEST_MODEL,
+                "d3_correction": True,
+                "d3_functional": "PBE",
+                "d3_damping": "BJ",
+            },
+            "technical": {"device": DEVICE},
+        })
+        model = load_torchsim_model(config)
+        assert model is not None
+        assert model.dtype == torch.float64
+
+
 class TestModelRegistries:
     """SevenNet model name registry."""
 
