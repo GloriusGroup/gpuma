@@ -11,6 +11,7 @@ import logging
 import os
 import re
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from .mol_utils import (
     smiles_to_conformer_ensemble as _smiles_to_ensemble_util,
@@ -19,6 +20,9 @@ from .mol_utils import (
     smiles_to_structure as _smiles_to_structure_util,
 )
 from .structure import Structure
+
+if TYPE_CHECKING:  # pragma: no cover - annotation only, avoids importing torch
+    from .config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -296,7 +300,10 @@ def read_xyz_directory(
 
 
 def smiles_to_xyz(
-    smiles_string: str, return_full_xyz_str: bool = False, multiplicity: int | None = None
+    smiles_string: str,
+    return_full_xyz_str: bool = False,
+    multiplicity: int | None = None,
+    config: Config | None = None,
 ) -> Structure | str:
     """Convert a SMILES string to a :class:`Structure` or an XYZ string.
 
@@ -320,7 +327,7 @@ def smiles_to_xyz(
     if not smiles_string or not smiles_string.strip():
         raise ValueError("SMILES string cannot be empty or None")
 
-    struct = _smiles_to_structure_util(smiles_string.strip())
+    struct = _smiles_to_structure_util(smiles_string.strip(), config=config)
     if multiplicity is not None:
         struct.multiplicity = int(multiplicity)
 
@@ -348,6 +355,7 @@ def smiles_to_ensemble(
     max_num_confs: int,
     multiplicity: int | None = None,
     seed: int | None = None,
+    config: Config | None = None,
 ) -> list[Structure]:
     """Generate conformer ensemble from SMILES.
 
@@ -373,7 +381,7 @@ def smiles_to_ensemble(
 
     mult = int(multiplicity) if multiplicity is not None else 1
     structs = _smiles_to_ensemble_util(
-        smiles_string.strip(), max_num_confs, multiplicity=mult, seed=seed,
+        smiles_string.strip(), max_num_confs, multiplicity=mult, seed=seed, config=config,
     )
     return structs
 

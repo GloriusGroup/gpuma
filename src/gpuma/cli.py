@@ -492,12 +492,11 @@ def cmd_convert(args, config: Config) -> None:
     """Handle the SMILES to XYZ conversion command.
 
     This command generates a single 3D structure from SMILES without running
-    any optimization.  The ``config`` parameter is accepted for interface
-    consistency but is not used.
+    any optimization. ``config`` selects the embedding device.
     """
     try:
         logger.info("Converting SMILES '%s' to XYZ without optimization", args.smiles)
-        structure = smiles_to_xyz(args.smiles)
+        structure = smiles_to_xyz(args.smiles, config=config)
         save_xyz_file(structure, args.output)
         logger.info("Structure saved to %s", args.output)
     except Exception as exc:  # pragma: no cover - defensive logging
@@ -518,7 +517,7 @@ def cmd_generate(args, config: Config) -> None:
             num_conf,
             args.smiles,
         )
-        structures = smiles_to_ensemble(args.smiles, num_conf)
+        structures = smiles_to_ensemble(args.smiles, num_conf, config=config)
         comments = [
             f"Generated conformer {i + 1} from SMILES: {args.smiles}"
             for i in range(len(structures))

@@ -54,7 +54,9 @@ def optimize_single_smiles(
     if config is None:
         config = load_config_from_file()
 
-    structure = smiles_to_xyz(smiles, multiplicity=config.optimization.multiplicity)
+    structure = smiles_to_xyz(
+        smiles, multiplicity=config.optimization.multiplicity, config=config
+    )
 
     if not isinstance(structure, Structure):
         raise ValueError("smiles_to_xyz did not return a Structure")
@@ -147,7 +149,9 @@ def optimize_ensemble_smiles(
     multiplicity = int(config.optimization.multiplicity)
     num_conformers = int(config.conformer_generation.max_num_conformers)
     seed = int(config.conformer_generation.conformer_seed)
-    conformers = smiles_to_ensemble(smiles, num_conformers, multiplicity, seed=seed)
+    conformers = smiles_to_ensemble(
+        smiles, num_conformers, multiplicity, seed=seed, config=config
+    )
     if not isinstance(conformers, list) or (
         len(conformers) and not isinstance(conformers[0], Structure)
     ):
