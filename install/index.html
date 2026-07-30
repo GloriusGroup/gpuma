@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../logo_round.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -358,6 +358,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#gpu-conformer-embedding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GPU conformer embedding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#environment-setup-examples" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -550,6 +561,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#gpu-conformer-embedding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GPU conformer embedding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#environment-setup-examples" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -615,6 +637,17 @@ to get the install command matching your platform and CUDA version, e.g.:</p>
 present and will not replace it:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip<span class="w"> </span>install<span class="w"> </span>gpuma
 </span></code></pre></div>
+<p>This pulls in all model backends (Fairchem UMA, ORB-v3, and SevenNet) as
+core dependencies — there is no separate optional extra to install.</p>
+<h3 id="gpu-conformer-embedding">GPU conformer embedding</h3>
+<p>SMILES → 3D conversion can run on the GPU via
+<a href="https://nvidia-bionemo.github.io/nvMolKit/">nvMolKit</a>, which is a core
+dependency and installs automatically from PyPI (it pins <code>rdkit==2026.3.1</code>
+to match the RDKit build it is linked against, so no extra package index is
+needed). The backend is selected by <code>technical.device</code>: a CUDA device uses
+nvMolKit, otherwise the CPU (morfeus) backend is used. The GPU path needs an
+NVIDIA GPU (compute capability 7.0+); on CPU-only machines the package still
+installs and the CPU backend is used.</p>
 <h3 id="environment-setup-examples">Environment setup examples</h3>
 <ul>
 <li>
@@ -714,7 +747,7 @@ To access the UMA models on Hugging Face, <strong>you must provide a token</stro
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.expand", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

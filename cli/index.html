@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../logo_round.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -410,6 +410,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#using-sevennet-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using SevenNet models
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -520,6 +531,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#using-sevennet-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using SevenNet models
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -606,6 +628,20 @@ your config file (see <code>examples/config_orb.json</code>) or override from th
 </span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># Batch optimization from a directory of XYZ files with ORB-v3</span>
 </span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>gpuma<span class="w"> </span>batch<span class="w"> </span>--xyz-dir<span class="w"> </span>examples/example_input_xyzs/multi_xyz_dir/<span class="w"> </span>--output<span class="w"> </span>batch_dir_orb.xyz<span class="w"> </span>--config<span class="w"> </span>examples/config_orb.json
 </span></code></pre></div>
+<h3 id="using-sevennet-models">Using SevenNet models</h3>
+<p>To use SevenNet, set <code>"model_type": "sevennet"</code> (alias <code>"7net"</code>) in your
+config file (see <code>examples/config_sevennet.json</code>). Multi-modal checkpoints
+such as <code>7net-omni</code> also need a <code>"model_modal"</code> fidelity (e.g.
+<code>"omol25_high"</code>) in the <code>model</code> section. The commands are identical to the
+other backends, just pointed at a SevenNet config:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Single optimization with SevenNet</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>gpuma<span class="w"> </span>optimize<span class="w"> </span>--smiles<span class="w"> </span><span class="s2">&quot;CCO&quot;</span><span class="w"> </span>--output<span class="w"> </span>output.xyz<span class="w"> </span>--config<span class="w"> </span>examples/config_sevennet.json
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Batch optimization from a directory of XYZ files with SevenNet</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>gpuma<span class="w"> </span>batch<span class="w"> </span>--xyz-dir<span class="w"> </span>examples/example_input_xyzs/multi_xyz_dir/<span class="w"> </span>--output<span class="w"> </span>batch_dir_7net.xyz<span class="w"> </span>--config<span class="w"> </span>examples/config_sevennet.json
+</span></code></pre></div>
+<p>You can also select SevenNet with the <code>--model-type</code> flag
+(<code>--model-type sevennet</code> or <code>--model-type 7net</code>), just like the other backends.</p>
 <p><strong>Note:</strong>
 - If <code>--config</code> is not specified, <code>config.json</code> in the current directory is loaded by default.
 - Direct CLI flags are supported, but using a config file is preferred for all workflows.
@@ -626,19 +662,19 @@ your config file (see <code>examples/config_orb.json</code>) or override from th
 </ul>
 <p>The config file is organized into four sections: <code>optimization</code> (batch
 settings, convergence, charge/multiplicity), <code>model</code> (backend, name,
-tokens, D3), <code>conformer_generation</code> (conformer count, seed), and
-<code>technical</code> (device, memory padding, logging).
+SevenNet modal, tokens, D3), <code>conformer_generation</code> (conformer count, seed),
+and <code>technical</code> (device, memory padding, logging).
 See <a href="../config/">Configuration</a> for details.</p>
 <p>You can control the compute device globally in the config or from the CLI with <code>--device</code> (which overrides the config).
 Accepted values are <code>cpu</code>, <code>cuda</code> (default GPU), or <code>cuda:N</code> to select a specific GPU (e.g. <code>cuda:0</code>, <code>cuda:1</code>).
 If the requested GPU index does not exist, GPUMA falls back to <code>cuda:0</code> with a warning.</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># use GPU 1 explicitly</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>gpuma<span class="w"> </span>--device<span class="w"> </span>cuda:1<span class="w"> </span>optimize<span class="w"> </span>--smiles<span class="w"> </span><span class="s2">&quot;C=C&quot;</span><span class="w"> </span>--output<span class="w"> </span>output.xyz<span class="w"> </span>--config<span class="w"> </span>examples/config.json
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># or set it in the config file: &quot;device&quot;: &quot;cuda:3&quot;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># use GPU 1 explicitly</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>gpuma<span class="w"> </span>--device<span class="w"> </span>cuda:1<span class="w"> </span>optimize<span class="w"> </span>--smiles<span class="w"> </span><span class="s2">&quot;C=C&quot;</span><span class="w"> </span>--output<span class="w"> </span>output.xyz<span class="w"> </span>--config<span class="w"> </span>examples/config.json
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># or set it in the config file: &quot;device&quot;: &quot;cuda:3&quot;</span>
 </span></code></pre></div>
 <p>Alternatively, you can use the <code>CUDA_VISIBLE_DEVICES</code> environment variable to control GPU visibility:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>gpuma<span class="w"> </span>optimize<span class="w"> </span>--smiles<span class="w"> </span><span class="s2">&quot;C=C&quot;</span><span class="w"> </span>--output<span class="w"> </span>output.xyz<span class="w"> </span>--config<span class="w"> </span>examples/config.json
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>gpuma<span class="w"> </span>optimize<span class="w"> </span>--smiles<span class="w"> </span><span class="s2">&quot;C=C&quot;</span><span class="w"> </span>--output<span class="w"> </span>output.xyz<span class="w"> </span>--config<span class="w"> </span>examples/config.json
 </span></code></pre></div>
 
 
@@ -692,7 +728,7 @@ If the requested GPU index does not exist, GPUMA falls back to <code>cuda:0</cod
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.expand", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

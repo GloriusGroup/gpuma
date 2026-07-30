@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="logo_round.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
@@ -340,6 +340,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#sevennet-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SevenNet support
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#option-2-install-from-source" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -625,6 +636,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#sevennet-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SevenNet support
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#option-2-install-from-source" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -734,18 +756,22 @@
 <hr />
 <p>GPUMA is a minimalist Python toolkit for facile and rapid high-throughput molecular geometry optimization
 based on machine-learning interatomic potentials (MLIPs).</p>
-<p>Two model backends are supported out of the box:</p>
+<p>Three model backends are supported out of the box:</p>
 <ul>
 <li><strong>Fairchem UMA</strong> (<a href="https://arxiv.org/abs/2505.08762">UMA/OMol25</a>) — the default backend.</li>
 <li><strong>ORB-v3</strong> (<a href="https://github.com/orbital-materials/orb-models">orbital-materials/orb-models</a>) — included in core dependencies.</li>
+<li><strong>SevenNet</strong> (<a href="https://github.com/MDIL-SNU/SevenNet">SevenNet</a>) — included in core dependencies, with support for multi-modal checkpoints such as <code>7net-omni</code>.</li>
 </ul>
-<p>Both backends support optional DFT-D3(BJ) dispersion correction.</p>
+<p>All three backends support optional DFT-D3(BJ) dispersion correction.</p>
 <p>GPUMA is especially designed for batch optimizations of many structures (conformer ensembles, datasets) on GPU,
 ensuring efficient parallelization and maximum GPU utilization by leveraging the <a href="https://arxiv.org/abs/2508.06628">torch-sim library</a>.
 It wraps model backends and torch-sim functionality to provide both a simple command-line
 interface (CLI) and a small but expressive Python API for single- and multi-structure optimizations.</p>
-<p>If conformer sampling is desired, GPUMA can generate conformer ensembles on the fly from SMILES strings
-using the <a href="https://digital-chemistry-laboratory.github.io/morfeus/">morfeus library</a>. Alternative input formats
+<p>If conformer sampling is desired, GPUMA can generate conformer ensembles on the fly from SMILES strings.
+The SMILES → 3D embedding runs on the GPU via <a href="https://nvidia-bionemo.github.io/nvMolKit/">nvMolKit</a>
+when a CUDA device is configured, and on the CPU via the
+<a href="https://digital-chemistry-laboratory.github.io/morfeus/">morfeus library</a> otherwise; the backend is
+selected from <code>technical.device</code>. Alternative input formats
 are described in the CLI section below.</p>
 <p>Feedback and improvements are always welcome!</p>
 <h2 id="installation">Installation</h2>
@@ -754,8 +780,9 @@ are described in the CLI section below.</p>
 To access the UMA models on Hugging Face, <strong>you must provide a token</strong> either via the <code>HUGGINGFACE_TOKEN</code> environment variable or via the config (direct token string or path to a file containing the token).</p>
 </blockquote>
 <h3 id="option-1-install-from-pypi-recommended">Option 1: Install from PyPI (recommended)</h3>
-<p>This installs <code>gpuma</code> together with all dependencies (including both the
-Fairchem UMA and ORB-v3 backends).
+<p>This installs <code>gpuma</code> together with all dependencies (including the
+Fairchem UMA, ORB-v3, and SevenNet backends, plus the nvMolKit GPU
+conformer-embedding backend).
 At the moment, installation and tests have only been
 validated under Python 3.12; using other Python versions is currently
 considered experimental.</p>
@@ -802,6 +829,13 @@ get the install command for your platform and CUDA version, e.g.:
 set <code>"model_type": "orb"</code> and <code>"model_name": "orb_v3_direct_omol"</code> in the
 <code>model</code> section of your configuration file (see <a href="config/">Configuration</a>
 and <code>examples/config_orb.json</code>).</p>
+<h3 id="sevennet-support">SevenNet support</h3>
+<p>SevenNet models are included in the standard installation. To use them,
+set <code>"model_type": "sevennet"</code> (alias <code>"7net"</code>) and a <code>"model_name"</code> such as
+<code>"7net-omni"</code> in the <code>model</code> section of your configuration file. Multi-modal
+checkpoints (e.g. <code>7net-omni</code>, <code>7net-mf-ompa</code>) additionally require a
+<code>"model_modal"</code> fidelity such as <code>"omol25_high"</code> (see <a href="config/">Configuration</a>
+and <code>examples/config_sevennet.json</code>).</p>
 <h3 id="option-2-install-from-source">Option 2: Install from source</h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># clone the repository</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/niklashoelter/gpuma.git
@@ -827,15 +861,17 @@ config file (JSON or YAML) and reference it in all CLI calls.</p>
 <p>A minimalistic and high-level Python API is provided for easy integration into custom scripts and workflows.</p>
 <p>Please refer to the documentation for detailed usage examples and API reference.</p>
 <h2 id="known-limitations">Known limitations</h2>
-<p>When a run is started from SMILES, an RDKit force field (via the morfeus library) is used to generate an initial structure. Spin is not taken into account during this step, so the initial estimated geometries can be incorrect. When the MLIP models are applied subsequently, the structure can sometimes be optimized to a maximum rather than a minimum because the model is not provided with Hessian matrices. This behavior only affects runs originating from SMILES; it does not occur with better starting geometries (e.g., when starting from XYZ files).</p>
+<p>When a run is started from SMILES, an RDKit/MMFF force field (via nvMolKit on GPU or the morfeus library on CPU) is used to generate an initial structure. Spin is not taken into account during this step, so the initial estimated geometries can be incorrect. When the MLIP models are applied subsequently, the structure can sometimes be optimized to a maximum rather than a minimum because the model is not provided with Hessian matrices. This behavior only affects runs originating from SMILES; it does not occur with better starting geometries (e.g., when starting from XYZ files).</p>
 <h2 id="troubleshooting">Troubleshooting</h2>
 <ul>
 <li>Missing libraries: install optional dependencies like <code>pyyaml</code> if you use YAML configs.</li>
 <li>Fairchem/UMA: ensure network access for model downloads and optionally set or provide
 <code>huggingface_token</code> (e.g., via a token file) to access the UMA model family.</li>
 <li>ORB-v3: set <code>"model_type": "orb"</code> in the <code>model</code> section of your config.</li>
+<li>SevenNet: set <code>"model_type": "sevennet"</code> in the <code>model</code> section of your
+  config; multi-modal checkpoints also need a <code>"model_modal"</code> fidelity.</li>
 <li>D3 dispersion correction: enable with <code>"d3_correction": true</code> in the
-  config — works for both ORB and Fairchem/UMA models (see
+  config — works for the ORB, Fairchem/UMA, and SevenNet backends (see
   <a href="config/">Configuration</a>).</li>
 </ul>
 <h2 id="license">License</h2>
@@ -892,7 +928,7 @@ config file (JSON or YAML) and reference it in all CLI calls.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.expand", "content.code.copy"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>
