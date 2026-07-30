@@ -1,8 +1,14 @@
-include LICENSE
+include LICENSE.md
 include README.md
 include pyproject.toml
 
 recursive-include examples *.py *.json *.xyz
+
+# Exclude large, gitignored benchmark datasets and generated output that the
+# recursive-include above would otherwise sweep into the sdist.
+prune examples/example_input_xyzs/kraken_library
+prune examples/example_input_xyzs/primary-amines_library
+prune examples/example_output
 
 # Exclude build and cache artifacts
 prune build
