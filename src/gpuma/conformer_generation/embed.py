@@ -361,7 +361,7 @@ def _generate(
     batch_size: int = 500,
     n_threads: int = 1,
     allow_cpu_fallback: bool = True,
-    n_keep: int = 1,
+    n_keep: int | None = 1,
 ) -> list[list[Structure] | None]:
     """Convert a list of SMILES to 3D structures as a single batch.
 
@@ -416,6 +416,7 @@ def _generate(
         CPU run.
     n_keep:
         Maximum conformers *returned* per molecule, lowest energy first.
+        ``None`` keeps every conformer surviving the embedding-time RMSD prune.
 
     Returns
     -------
@@ -576,7 +577,7 @@ def generate_structures(
 
 def generate_ensembles(
     smiles_list: list[str],
-    max_num_confs: int,
+    max_num_confs: int | None,
     config: Config | None = None,
     multiplicity: int | None = None,
     n_confs: int | None = None,
@@ -599,7 +600,8 @@ def generate_ensembles(
         is distinct from ``n_confs``, which controls how many are *generated* --
         generating fewer than you keep simply wastes the budget. Fewer than
         requested may come back either way, since RMSD pruning removes
-        duplicates.
+        duplicates. ``None`` keeps every conformer that survives the
+        embedding-time RMSD prune, lowest energy first.
 
     Returns
     -------
@@ -611,12 +613,12 @@ def generate_ensembles(
     Raises
     ------
     ValueError
-        If ``max_num_confs`` is not positive.
+        If ``max_num_confs`` is an int that is not positive.
     Exception
         Whatever the GPU backend raised, when a GPU was requested and
         ``allow_cpu_fallback`` is ``False``.
     """
-    if max_num_confs <= 0:
+    if max_num_confs is not None and max_num_confs <= 0:
         raise ValueError(f"max_num_confs must be positive, got {max_num_confs}")
     return _generate(
         smiles_list,

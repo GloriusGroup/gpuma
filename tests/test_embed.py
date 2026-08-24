@@ -311,9 +311,52 @@ def test_generate_ensembles_preserves_order_around_failures(cpu_config):
 
 @pytest.mark.parametrize("bad", [0, -1])
 def test_generate_ensembles_rejects_nonpositive_count(cpu_config, bad):
-    """max_num_confs must be positive."""
+    """max_num_confs must be positive; None (keep-all) is the one exception."""
     with pytest.raises(ValueError, match="max_num_confs"):
         generate_ensembles([ETHANOL], bad, cpu_config)
+
+
+# ---------------------------------------------------------------------------
+# Keep-all mode (max_num_confs=None)
+# ---------------------------------------------------------------------------
+
+
+def test_generate_ensembles_keep_all_returns_every_pruned_conformer(cpu_config):
+    """None keeps whatever survives the embed-time RMSD prune -- no cap.
+
+    A cap far above the conformer budget cannot bite, so it must agree with
+    keep-all exactly; a cap of 1 must return a strict subset.
+    """
+    kwargs = {"n_confs": 8, "seed": 42}
+    (keep_all,) = generate_ensembles([BENZOIC_ACID], None, cpu_config, **kwargs)
+    (huge_cap,) = generate_ensembles([BENZOIC_ACID], 1000, cpu_config, **kwargs)
+    (capped,) = generate_ensembles([BENZOIC_ACID], 1, cpu_config, **kwargs)
+
+    assert len(keep_all) == len(huge_cap)
+    assert len(capped) == 1
+    assert len(keep_all) >= len(capped)
+
+
+def test_generate_ensembles_keep_all_is_reproducible(cpu_config):
+    """A fixed seed pins the keep-all ensemble, geometries included."""
+    kwargs = {"n_confs": 8, "seed": 42}
+    (first,) = generate_ensembles([ETHANOL], None, cpu_config, **kwargs)
+    (second,) = generate_ensembles([ETHANOL], None, cpu_config, **kwargs)
+
+    assert len(first) == len(second)
+    for a, b in zip(first, second, strict=True):
+        assert a.symbols == b.symbols
+        assert a.coordinates == pytest.approx(b.coordinates)
+
+
+def test_generate_ensembles_keep_all_first_agrees_with_generate_structures(cpu_config):
+    """Keep-all still sorts lowest energy first, like the single entry point."""
+    kwargs = {"n_confs": FEW_CONFS, "seed": 42}
+    (single,) = generate_structures([ETHANOL], cpu_config, **kwargs)
+    (ensemble,) = generate_ensembles([ETHANOL], None, cpu_config, **kwargs)
+
+    assert single.symbols == ensemble[0].symbols
+    assert single.coordinates == pytest.approx(ensemble[0].coordinates)
 
 
 # ---------------------------------------------------------------------------
