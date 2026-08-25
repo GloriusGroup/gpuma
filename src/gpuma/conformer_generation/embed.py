@@ -13,6 +13,17 @@ falls back to CPU whenever the GPU is unusable.
 The two backends do not produce identical geometries: morfeus (CPU) runs plain
 distance geometry, while nvMolKit (GPU) runs ETKDGv3 from random coordinates.
 Pin the device if you need comparable runs.
+
+Both backends do, however, prune identically. Duplicate removal happens once,
+in :func:`_prune_by_rmsd`, *after* force-field minimization and *after* the
+energy sort -- never during embedding. Pruning raw embeddings is what the two
+backends used to disagree about (they generate different raw geometries), and
+it silently discarded hydrogen-bonded rotamers: an O-H torsion barely moves any
+heavy atom, so before minimization the rotamers look like duplicates and there
+is no energy yet to tell them apart. Salicylic acid collapsed to a single
+conformer that way. After minimization the hydrogen-bonded rotamer is a
+distinct minimum -- usually the lowest one -- so an energy-ordered prune keeps
+it.
 """
 
 from __future__ import annotations
@@ -39,7 +50,10 @@ CONF_BUDGET: tuple[tuple[int, int], ...] = ((7, 50), (12, 200), (10**9, 300))
 #: run, so embeddings are NOT reproducible. Pass a fixed ``seed`` for that.
 DEFAULT_SEED = -1
 
-#: RMSD threshold (Angstrom) for discarding duplicate conformers during embedding.
+#: Heavy-atom RMSD threshold (Angstrom) for discarding duplicate conformers.
+#: Applied by :func:`_prune_by_rmsd` after minimization, not during embedding.
+#: The value is morfeus's own default, kept so ensembles stay comparable with
+#: what gpuma produced before the prune moved.
 DEFAULT_PRUNE_RMS = 0.35
 
 #: Max MMFF94 minimization iterations per conformer. GPU backend only --
@@ -120,8 +134,8 @@ def _prepare(smiles: str):
     return Chem.AddHs(mol), charge
 
 
-def _etkdg_params(seed: int, prune_rms: float, random_coords: bool, n_threads: int = 1):
-    """Build ETKDGv3 parameters.
+def _etkdg_params(seed: int, random_coords: bool, n_threads: int = 1):
+    """Build ETKDGv3 parameters, with embedding-time pruning switched off.
 
     The morfeus path builds these from a bare ``EmbedParameters()``, which
     leaves ``useExpTorsionAnglePrefs``/``useBasicKnowledge`` off -- so it runs
@@ -130,16 +144,85 @@ def _etkdg_params(seed: int, prune_rms: float, random_coords: bool, n_threads: i
     ``useSmallRingTorsions`` is enabled to match morfeus, which sets it while
     ``ETKDGv3()`` does not. It applies torsion preferences to rings of 8 atoms
     or fewer, so it mostly affects saturated heterocycles.
+
+    ``pruneRmsThresh`` is pinned to ``-1`` (RDKit's own default, meaning no
+    pruning). Deduplication is deferred to :func:`_prune_by_rmsd`, which runs
+    on minimized, energy-sorted geometries -- see the module docstring for why
+    pruning raw embeddings loses conformers that matter.
     """
     from rdkit.Chem import rdDistGeom
 
     p = rdDistGeom.ETKDGv3()
     p.randomSeed = seed
-    p.pruneRmsThresh = prune_rms
+    p.pruneRmsThresh = -1.0
     p.numThreads = n_threads
     p.useRandomCoords = random_coords  # required True by nvMolKit
     p.useSmallRingTorsions = True
     return p
+
+
+def _prune_by_rmsd(symbols, coordinates, thresh: float) -> list[int]:
+    """Greedy heavy-atom RMSD prune over an *energy-sorted* conformer list.
+
+    Walks the list from lowest energy downwards and keeps a conformer only when
+    it is further than ``thresh`` from every conformer already kept, so the
+    survivor of each duplicate cluster is its lowest-energy member. Callers
+    must therefore sort before calling; pruning an unsorted list keeps whichever
+    conformer happened to come first.
+
+    RMSD is index-matched over heavy atoms after optimal superposition (Kabsch),
+    with no graph-automorphism search. That deliberately matches morfeus's
+    ``AlignMolConformers`` path so the two backends prune identically; the price
+    is that symmetry-equivalent orientations are not recognised as duplicates.
+
+    Parameters
+    ----------
+    symbols:
+        Atomic symbols, shared by every conformer.
+    coordinates:
+        One ``(N, 3)`` coordinate set per conformer, lowest energy first.
+    thresh:
+        Heavy-atom RMSD in Angstrom below which two conformers are the same.
+        Non-positive disables pruning.
+
+    Returns
+    -------
+    list[int]
+        Indices into ``coordinates`` to keep, in input (energy) order.
+    """
+    import numpy as np
+
+    n_confs = len(coordinates)
+    if thresh is None or thresh <= 0 or n_confs < 2:
+        return list(range(n_confs))
+
+    heavy = [i for i, symbol in enumerate(symbols) if symbol != "H"]
+    if len(heavy) < 2:
+        # Nothing to superimpose on -- e.g. methane. Any two conformers of such
+        # a molecule are the same up to rotation, but saying so here would drop
+        # conformers the caller cannot get back, so leave them alone.
+        return list(range(n_confs))
+
+    centred = []
+    for xyz in coordinates:
+        block = np.asarray(xyz, dtype=float)[heavy]
+        centred.append(block - block.mean(axis=0))
+
+    n_heavy = len(heavy)
+    kept: list[int] = []
+    kept_coords: list = []
+    for i, probe in enumerate(centred):
+        for reference in kept_coords:
+            u, _, vt = np.linalg.svd(probe.T @ reference)
+            flip = 1.0 if np.linalg.det(u @ vt) > 0 else -1.0
+            rotation = u @ np.diag([1.0, 1.0, flip]) @ vt
+            delta = probe @ rotation - reference
+            if float(np.sqrt((delta * delta).sum() / n_heavy)) <= thresh:
+                break
+        else:
+            kept.append(i)
+            kept_coords.append(probe)
+    return kept
 
 
 def _to_structure(mol, conf_id: int, charge: int, multiplicity: int, smiles: str) -> Structure:
@@ -200,7 +283,15 @@ def _embed_cpu(prepared, n_confs_override, seed, prune_rms, multiplicity, n_thre
 
     ``prepared`` is a list of ``(index, smiles, mol, charge)``; results are
     written into ``out`` by original index as lists of at most ``n_keep``
-    structures, lowest energy first.
+    structures, lowest energy first (``n_keep=None`` keeps every survivor).
+
+    morfeus's own pruning is switched off (``rmsd_thres=None``) and the ensemble
+    is sorted before :func:`_prune_by_rmsd` runs, so the prune sees minimized,
+    energy-ordered geometries -- identical treatment to the GPU backend. The
+    previous code pruned twice, once during embedding and once via
+    ``ensemble.prune_rmsd()`` *before* ``sort()``; that second call is greedy
+    over the list as it stands, so it kept whichever conformer was embedded
+    first rather than the lower-energy one.
     """
     from morfeus.conformer import ConformerEnsemble
 
@@ -220,10 +311,9 @@ def _embed_cpu(prepared, n_confs_override, seed, prune_rms, multiplicity, n_thre
                 n_conformers=n_confs,
                 optimize=force_field,
                 random_seed=seed if seed >= 0 else None,
-                rmsd_thres=prune_rms,
+                rmsd_thres=None,  # pruning is deferred to _prune_by_rmsd
                 n_threads=n_threads,
             )
-            ensemble.prune_rmsd()
             ensemble.multiplicity = multiplicity
             ensemble.sort()
         except Exception as exc:  # noqa: BLE001 - one bad molecule must not stop the batch
@@ -235,22 +325,30 @@ def _embed_cpu(prepared, n_confs_override, seed, prune_rms, multiplicity, n_thre
             logger.warning("no conformers generated for %s", smiles)
             continue
 
-        kept: list[Structure] = []
-        for conformer in conformers[:n_keep]:  # sort() puts lowest energy first
+        # sort() has put lowest energy first, which is what the prune needs.
+        records: list[tuple[list[str], list[tuple[float, float, float]]]] = []
+        for conformer in conformers:
             symbols = _to_symbol_list(getattr(conformer, "elements", []))
             coordinates = _to_coord_list(getattr(conformer, "coordinates", []))
             if len(symbols) != len(coordinates):
                 logger.warning("element/coordinate mismatch for %s", smiles)
                 continue
-            kept.append(
-                Structure(
-                    symbols=symbols,
-                    coordinates=coordinates,
-                    charge=charge,
-                    multiplicity=ensemble.multiplicity,
-                    comment=f"Generated from SMILES: {smiles}",
-                )
+            records.append((symbols, coordinates))
+        if not records:
+            logger.warning("no usable conformers for %s", smiles)
+            continue
+
+        survivors = _prune_by_rmsd(records[0][0], [coords for _, coords in records], prune_rms)
+        kept = [
+            Structure(
+                symbols=records[i][0],
+                coordinates=records[i][1],
+                charge=charge,
+                multiplicity=ensemble.multiplicity,
+                comment=f"Generated from SMILES: {smiles}",
             )
+            for i in survivors[:n_keep]
+        ]
         if kept:
             out[idx] = kept
     return out
@@ -275,6 +373,10 @@ def _embed_gpu(
     force field -- see :func:`_force_field_for` -- and minimized in one batched
     call per field, so the UFF minority stays on the GPU rather than falling
     back to per-molecule CPU work.
+
+    nvMolKit is handed ETKDG parameters with pruning disabled; duplicates are
+    removed afterwards by :func:`_prune_by_rmsd`, on the energy-ranked minimized
+    conformers, exactly as on the CPU path.
     """
     from nvmolkit.embedMolecules import EmbedMolecules
     from nvmolkit.mmffOptimization import MMFFOptimizeMoleculesConfs
@@ -302,7 +404,7 @@ def _embed_gpu(
     for n_confs, members in sorted(groups.items()):
         mols = [m for _, _, m, _ in members]
         # nvMolKit mandates useRandomCoords=True.
-        params = _etkdg_params(seed, prune_rms, random_coords=True)
+        params = _etkdg_params(seed, random_coords=True)
         EmbedMolecules(mols, params, confsPerMolecule=n_confs, hardwareOptions=hardware)
 
         by_field: dict[str, list] = {"MMFF94": [], "UFF": []}
@@ -344,8 +446,14 @@ def _embed_gpu(
             else:
                 # Lowest energy first, matching morfeus's ensemble.sort().
                 ranked = [cids[i] for i in sorted(range(len(energies)), key=energies.__getitem__)]
+            # Prune here, on minimized and energy-ordered geometries, using the
+            # same helper as the CPU backend.
+            symbols = [atom.GetSymbol() for atom in mol.GetAtoms()]
+            ranked_coords = [mol.GetConformer(cid).GetPositions() for cid in ranked]
+            survivors = _prune_by_rmsd(symbols, ranked_coords, prune_rms)
             out[idx] = [
-                _to_structure(mol, cid, charge, multiplicity, smiles) for cid in ranked[:n_keep]
+                _to_structure(mol, ranked[i], charge, multiplicity, smiles)
+                for i in survivors[:n_keep]
             ]
     return out
 
@@ -397,8 +505,11 @@ def _generate(
         Random seed for the embedding. ``-1`` lets RDKit choose one per run,
         making geometries non-reproducible.
     prune_rms_thresh:
-        RMSD threshold for discarding duplicate conformers during embedding.
-        Fewer conformers than ``n_confs`` may survive it.
+        Heavy-atom RMSD threshold for discarding duplicate conformers. Applied
+        after force-field minimization and after the energy sort, so the
+        survivor of each duplicate cluster is its lowest-energy member; the
+        embedding itself does not prune. Fewer conformers than ``n_confs`` may
+        survive it.
     max_iters:
         Maximum force-field minimization iterations per conformer. GPU backend
         only -- the CPU backend goes through morfeus, which does not expose it.
@@ -416,7 +527,7 @@ def _generate(
         CPU run.
     n_keep:
         Maximum conformers *returned* per molecule, lowest energy first.
-        ``None`` keeps every conformer surviving the embedding-time RMSD prune.
+        ``None`` keeps every conformer surviving the post-minimization RMSD prune.
 
     Returns
     -------
@@ -531,7 +642,11 @@ def generate_structures(
         Random seed for the embedding. ``-1`` lets RDKit choose one per run,
         making geometries non-reproducible.
     prune_rms_thresh:
-        RMSD threshold for discarding duplicate conformers during embedding.
+        Heavy-atom RMSD threshold for discarding duplicate conformers. Applied
+        after force-field minimization and after the energy sort, so the
+        survivor of each duplicate cluster is its lowest-energy member; the
+        embedding itself does not prune. Fewer conformers than ``n_confs`` may
+        survive it.
     max_iters:
         Maximum force-field minimization iterations per conformer. GPU backend
         only -- the CPU backend goes through morfeus, which does not expose it.
@@ -601,7 +716,7 @@ def generate_ensembles(
         generating fewer than you keep simply wastes the budget. Fewer than
         requested may come back either way, since RMSD pruning removes
         duplicates. ``None`` keeps every conformer that survives the
-        embedding-time RMSD prune, lowest energy first.
+        post-minimization RMSD prune, lowest energy first.
 
     Returns
     -------
