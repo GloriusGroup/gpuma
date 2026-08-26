@@ -155,3 +155,70 @@ class TestFairchemModelRegistry:
         """AVAILABLE_FAIRCHEM_MODELS contains all expected UMA models."""
         assert len(AVAILABLE_FAIRCHEM_MODELS) >= 3
         assert "uma-s-1p2" in AVAILABLE_FAIRCHEM_MODELS
+
+
+class TestFairchemLocalCheckpoint:
+    """A config supplying only ``model_path`` must work on both paths.
+
+    These stub out ``FairChemModel``/``pretrained_mlip`` rather than downloading
+    a checkpoint: the behaviour under test is purely which config fields each
+    loader insists on *before* it constructs anything, so the real model would
+    add a token requirement without adding coverage.
+    """
+
+    @staticmethod
+    def _checkpoint_only_config(tmp_path):
+        ckpt = tmp_path / "local.pt"
+        ckpt.write_bytes(b"")
+        return Config({
+            "model": {"model_type": "fairchem", "model_name": "", "model_path": str(ckpt)},
+            "technical": {"device": "cpu"},
+        })
+
+    def test_torchsim_accepts_checkpoint_without_model_name(self, tmp_path, monkeypatch):
+        """Batch mode used to demand model_name even with a checkpoint given.
+
+        _verify_model_name_and_cache_dir raises on an empty model_name, and it
+        was called unconditionally, so this config failed in batch mode while
+        working in sequential mode.
+        """
+        import torch_sim.models.fairchem as ts_fairchem
+
+        sentinel = object()
+        seen = {}
+
+        def fake_model(**kwargs):
+            seen.update(kwargs)
+            return sentinel
+
+        monkeypatch.setattr(ts_fairchem, "FairChemModel", fake_model)
+
+        from gpuma.models.fairchem import _load_fairchem_torchsim
+
+        assert _load_fairchem_torchsim(self._checkpoint_only_config(tmp_path)) is sentinel
+        assert seen["model"].name == "local.pt"
+
+    def test_calculator_accepts_checkpoint_without_model_name(self, tmp_path, monkeypatch):
+        """The sequential path already worked; pin it so the two stay in step."""
+        import fairchem.core as fc
+
+        sentinel = object()
+        monkeypatch.setattr(
+            fc.pretrained_mlip, "load_predict_unit", lambda **kw: sentinel
+        )
+        monkeypatch.setattr(fc, "FAIRChemCalculator", lambda **kw: sentinel)
+
+        from gpuma.models.fairchem import _load_fairchem_calculator
+
+        assert _load_fairchem_calculator(self._checkpoint_only_config(tmp_path)) is sentinel
+
+    def test_model_name_still_required_without_a_checkpoint(self):
+        """Dropping the check entirely would defer the error to a confusing place."""
+        from gpuma.models.fairchem import _load_fairchem_torchsim
+
+        config = Config({
+            "model": {"model_type": "fairchem", "model_name": ""},
+            "technical": {"device": "cpu"},
+        })
+        with pytest.raises(ValueError, match="Model name must be specified"):
+            _load_fairchem_torchsim(config)
