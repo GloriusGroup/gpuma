@@ -301,7 +301,7 @@ def optimize_single_structure(
 def optimize_structure_batch(
     structures: list[Structure],
     config: Config | None = None,
-) -> list[Structure]:
+) -> list[Structure | None]:
     """Optimize a list of structures and return them with updated coordinates.
 
     The optimization mode is controlled by
@@ -321,8 +321,18 @@ def optimize_structure_batch(
 
     Returns
     -------
-    list[Structure]
-        Optimized structures with coordinates and energies set.
+    list[Structure | None]
+        One entry per input, in input order. ``None`` marks a structure whose
+        optimization failed, so a single bad geometry cannot abort the run.
+
+        .. versionchanged::
+            Previously the failures were simply left out, which silently
+            shortened the list and shifted every later result onto the wrong
+            input. Callers that index results against inputs, or label output
+            by position, were quietly misattributing geometries. Iterating
+            callers now need to skip ``None``; this matches
+            :func:`gpuma.conformer_generation.embed.generate_structures`,
+            which already reports per-molecule failure this way.
 
     Raises
     ------
@@ -373,23 +383,29 @@ def optimize_structure_batch(
 def _optimize_sequential(
     structures: list[Structure],
     config: Config,
-) -> list[Structure]:
-    """Optimize structures one-by-one using ASE with a shared calculator."""
+) -> list[Structure | None]:
+    """Optimize structures one-by-one using ASE with a shared calculator.
+
+    Returns one entry per input, in input order, with ``None`` where the
+    optimization raised. Appending only the successes -- as this used to --
+    made the returned list shorter than the input and shifted every result
+    after a failure onto the wrong structure, with nothing to signal it.
+    """
     calculator = _get_cached_calculator(config)
 
     logger.info("Starting sequential optimization of %d structures", len(structures))
-    results: list[Structure] = []
+    results: list[Structure | None] = [None] * len(structures)
+    n_ok = 0
     for i, struct in enumerate(structures):
         try:
-            optimized = optimize_single_structure(struct, config, calculator)
-            results.append(optimized)
+            results[i] = optimize_single_structure(struct, config, calculator)
+            n_ok += 1
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.warning("Structure %d optimization failed: %s", i + 1, exc)
-            continue
 
     logger.info(
         "Sequential optimization completed. %d/%d successful",
-        len(results),
+        n_ok,
         len(structures),
     )
     return results
@@ -398,7 +414,7 @@ def _optimize_sequential(
 def _optimize_batch(
     structures: list[Structure],
     config: Config,
-) -> list[Structure]:
+) -> list[Structure | None]:
     """Optimize structures in parallel using torch-sim batch inference."""
     import torch
     import torch_sim

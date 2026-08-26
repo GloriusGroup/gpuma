@@ -160,13 +160,17 @@ def optimize_ensemble_smiles(
         s.multiplicity = multiplicity
     results = optimize_structure_batch(conformers, config)
 
+    # Number by position in the input, not by position among the survivors: a
+    # conformer that failed to optimize must not renumber the ones after it.
+    optimized = [(i, s) for i, s in enumerate(results) if s is not None]
+
     if output_file:
         comments = [
-            f"Optimized conformer {i + 1} from SMILES: {smiles}" for i in range(len(results))
+            f"Optimized conformer {i + 1} from SMILES: {smiles}" for i, _ in optimized
         ]
-        save_multi_xyz(results, output_file, comments)
+        save_multi_xyz([s for _, s in optimized], output_file, comments)
 
-    return results
+    return [s for _, s in optimized]
 
 
 def optimize_batch_multi_xyz_file(
@@ -210,13 +214,17 @@ def optimize_batch_multi_xyz_file(
     )
     results = optimize_structure_batch(structures, config)
 
+    # Numbered by position in the file, so a structure that failed to optimize
+    # leaves a gap rather than shifting every later label onto the wrong input.
+    optimized = [(i, s) for i, s in enumerate(results) if s is not None]
+
     if output_file:
         comments = [
-            f"Optimized structure {i + 1} from: {input_file}" for i in range(len(results))
+            f"Optimized structure {i + 1} from: {input_file}" for i, _ in optimized
         ]
-        save_multi_xyz(results, output_file, comments)
+        save_multi_xyz([s for _, s in optimized], output_file, comments)
 
-    return results
+    return [s for _, s in optimized]
 
 
 def optimize_batch_xyz_directory(
@@ -255,14 +263,16 @@ def optimize_batch_xyz_directory(
     )
     results = optimize_structure_batch(structures, config)
 
+    # Numbered by position in the directory listing; see the note above.
+    optimized = [(i, s) for i, s in enumerate(results) if s is not None]
+
     if output_file:
         comments = [
-            f"Optimized structure {i + 1} from batch input"
-            for i in range(len(results))
+            f"Optimized structure {i + 1} from batch input" for i, _ in optimized
         ]
-        save_multi_xyz(results, output_file, comments)
+        save_multi_xyz([s for _, s in optimized], output_file, comments)
 
-    return results
+    return [s for _, s in optimized]
 
 
 __all__ = [
