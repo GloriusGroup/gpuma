@@ -29,6 +29,7 @@ it.
 from __future__ import annotations
 
 import logging
+from math import isfinite
 from typing import TYPE_CHECKING
 
 from ..structure import Structure
@@ -223,6 +224,64 @@ def _prune_by_rmsd(symbols, coordinates, thresh: float) -> list[int]:
             kept.append(i)
             kept_coords.append(probe)
     return kept
+
+
+def _rank_by_energy(cids: list[int], energies, smiles: str) -> list[int]:
+    """Order conformer ids lowest-energy first, matching ``ensemble.sort()``.
+
+    ``energies`` is nvMolKit's per-conformer output for one molecule, in
+    conformer order, or ``None`` when no force field applied. Anything the
+    ranking cannot be trusted on falls back to embedding order rather than
+    guessing, because the caller treats position 0 as the winner.
+
+    Parameters
+    ----------
+    cids:
+        Conformer ids, in ``mol.GetConformers()`` order.
+    energies:
+        One energy per conformer, or ``None`` if the molecule was not
+        minimized.
+    smiles:
+        Only used to name the molecule in warnings.
+
+    Returns
+    -------
+    list[int]
+        ``cids`` reordered, lowest energy first. Non-finite energies sort
+        last. Returns ``cids`` unchanged when there is nothing to rank on.
+    """
+    if energies is None:
+        # Neither MMFF94 nor UFF applies, so there is nothing to rank by and
+        # the conformers stay as embedded. The CPU backend does the same,
+        # silently -- hence the warning here.
+        logger.warning(
+            "no MMFF94 or UFF parameters for %s; keeping unminimized conformer", smiles
+        )
+        return list(cids)
+    if len(energies) != len(cids):
+        # nvMolKit returns one energy per conformer, in conformer order. A
+        # mismatch means the pairing is unknowable, and guessing it would
+        # silently promote the wrong geometry to lowest-energy -- so fall back
+        # to embedding order, as in the no-force-field case above.
+        logger.warning(
+            "%s: %d energies for %d conformers; keeping embedding order",
+            smiles,
+            len(energies),
+            len(cids),
+        )
+        return list(cids)
+    # A diverged minimization yields NaN, which compares false against
+    # everything: sorting on the raw value leaves such a conformer wherever the
+    # comparisons happen to drop it, which can be position 0. Order on
+    # (is-not-finite, energy) instead, so NaN and +/-inf sort last and never
+    # reach a comparison that decides the winner.
+    return [
+        cids[i]
+        for i in sorted(
+            range(len(energies)),
+            key=lambda i: (not isfinite(energies[i]), energies[i]),
+        )
+    ]
 
 
 def _to_structure(mol, conf_id: int, charge: int, multiplicity: int, smiles: str) -> Structure:
@@ -434,27 +493,21 @@ def _embed_gpu(
                 logger.warning("GPU embedding produced no conformer for %s", smiles)
                 continue
             cids = [c.GetId() for c in mol.GetConformers()]
-            energies = energies_by_mol.get(id(mol))
-            if energies is None:
-                # Neither MMFF94 nor UFF applies, so there is nothing to rank
-                # by and the conformers stay as embedded. The CPU backend does
-                # the same, silently -- hence the warning here.
-                logger.warning(
-                    "no MMFF94 or UFF parameters for %s; keeping unminimized conformer", smiles
-                )
-                ranked = cids
-            else:
-                # Lowest energy first, matching morfeus's ensemble.sort().
-                ranked = [cids[i] for i in sorted(range(len(energies)), key=energies.__getitem__)]
+            ranked = _rank_by_energy(cids, energies_by_mol.get(id(mol)), smiles)
             # Prune here, on minimized and energy-ordered geometries, using the
             # same helper as the CPU backend.
             symbols = [atom.GetSymbol() for atom in mol.GetAtoms()]
             ranked_coords = [mol.GetConformer(cid).GetPositions() for cid in ranked]
             survivors = _prune_by_rmsd(symbols, ranked_coords, prune_rms)
-            out[idx] = [
+            kept = [
                 _to_structure(mol, ranked[i], charge, multiplicity, smiles)
                 for i in survivors[:n_keep]
             ]
+            # Guarded like the CPU backend: a molecule that yields nothing gets
+            # no entry, so _generate reports it as None. Assigning [] here would
+            # make the two backends disagree about what "failed" looks like.
+            if kept:
+                out[idx] = kept
     return out
 
 

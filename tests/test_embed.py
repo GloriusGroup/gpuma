@@ -20,6 +20,7 @@ from gpuma.conformer_generation.embed import (
     _gpu_ids_from_device,
     _prepare,
     _prune_by_rmsd,
+    _rank_by_energy,
     generate_ensembles,
     generate_structures,
 )
@@ -568,3 +569,61 @@ def test_mol_utils_raises_on_invalid_smiles(cpu_config):
 
     with pytest.raises(ValueError):
         smiles_to_structure(INVALID_SMILES, config=cpu_config)
+
+
+# ---------------------------------------------------------------------------
+# Energy ranking (GPU backend)
+# ---------------------------------------------------------------------------
+
+
+def test_rank_by_energy_orders_lowest_first():
+    """Position 0 is the winner, so it must carry the lowest energy."""
+    assert _rank_by_energy([10, 11, 12], [0.5, -2.0, 1.0], ETHANOL) == [11, 10, 12]
+
+
+def test_rank_by_energy_without_energies_keeps_embedding_order():
+    """No force field applied means there is nothing to rank on."""
+    assert _rank_by_energy([10, 11, 12], None, ETHANOL) == [10, 11, 12]
+
+
+def test_rank_by_energy_length_mismatch_keeps_embedding_order():
+    """A short energy list makes the pairing unknowable; do not guess it.
+
+    Ranking on it would index the wrong conformers and silently promote a
+    geometry that was never the minimum.
+    """
+    assert _rank_by_energy([10, 11, 12], [0.5, -2.0], ETHANOL) == [10, 11, 12]
+
+
+def test_rank_by_energy_ignores_extra_energies():
+    """Symmetric to the short case -- a long list is equally untrustworthy."""
+    assert _rank_by_energy([10, 11], [0.5, -2.0, -9.0], ETHANOL) == [10, 11]
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_rank_by_energy_sorts_non_finite_last(bad):
+    """A diverged minimization must never win the ensemble."""
+    ranked = _rank_by_energy([10, 11, 12], [bad, 1.0, -1.0], ETHANOL)
+    assert ranked[-1] == 10
+    assert ranked[0] == 12
+
+
+def test_rank_by_energy_nan_does_not_capture_position_zero():
+    """NaN first in the input is the case that regresses if the key is dropped.
+
+    ``sorted`` only ever calls ``<``, and every comparison against NaN is
+    False, so an already-first NaN is never moved by a plain value sort.
+    """
+    ranked = _rank_by_energy([10, 11, 12], [float("nan"), 5.0, 3.0], ETHANOL)
+    assert ranked[0] == 12
+
+
+def test_rank_by_energy_is_stable_for_ties():
+    """Equal energies keep embedding order, so runs stay reproducible."""
+    assert _rank_by_energy([10, 11, 12], [1.0, 1.0, 1.0], ETHANOL) == [10, 11, 12]
+
+
+def test_rank_by_energy_returns_a_new_list():
+    """The caller indexes ``ranked`` while ``cids`` stays live; no aliasing."""
+    cids = [10, 11, 12]
+    assert _rank_by_energy(cids, None, ETHANOL) is not cids
