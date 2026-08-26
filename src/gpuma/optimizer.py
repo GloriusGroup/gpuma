@@ -14,6 +14,7 @@ selected automatically from the configuration.
 from __future__ import annotations
 
 import functools
+import json
 import logging
 from typing import Any
 
@@ -37,112 +38,55 @@ _DEFAULT_FORCE_CRITERION: float = float(
 # ---------------------------------------------------------------------------
 
 
-def _cache_key(config: Config) -> tuple:
-    """Extract a hashable cache key from configuration parameters."""
-    mdl = config.model
-    tech = config.technical
-    return (
-        resolve_model_type(config),
-        str(tech.device),
-        str(mdl.model_name),
-        str(mdl.model_path) if mdl.model_path else None,
-        str(mdl.model_cache_dir) if mdl.model_cache_dir else None,
-        str(mdl.huggingface_token) if mdl.huggingface_token else None,
-        str(mdl.huggingface_token_file) if mdl.huggingface_token_file else None,
-        bool(mdl.get("d3_correction", False)),
-        str(mdl.get("d3_functional", "PBE")),
-        str(mdl.get("d3_damping", "BJ")),
-    )
+def _cache_key(config: Config) -> str:
+    """Return a hashable key covering everything the model loaders read.
+
+    Serializes the whole ``model`` section plus the device rather than listing
+    fields one by one. The enumerated version silently omitted ``model_modal``,
+    so every SevenNet run through this module loaded the checkpoint's default
+    fidelity instead of the configured one, and two configs differing only in
+    ``model_modal`` collided on the same cache entry. Any field added to the
+    model section in future is covered here automatically.
+
+    ``model_type`` is stored in canonical form so that aliases which resolve to
+    the same backend (``"7net"``/``"sevennet"``) share one cache entry.
+    """
+    payload = dict(config.model.to_dict())
+    payload["model_type"] = resolve_model_type(config)
+    payload["__device__"] = str(config.technical.device)
+    # sort_keys so key ordering in the config file cannot split the cache;
+    # default=str so an unexpected non-JSON value degrades to its repr rather
+    # than raising and taking the whole run down.
+    return json.dumps(payload, sort_keys=True, default=str)
 
 
-def _config_from_key(key: tuple) -> Config:
-    """Reconstruct a minimal :class:`Config` from a cache key tuple."""
-    (
-        model_type,
-        device,
-        model_name,
-        model_path,
-        cache_dir,
-        hf_token,
-        hf_token_file,
-        d3_correction,
-        d3_functional,
-        d3_damping,
-    ) = key
-    return Config(
-        {
-            "model": {
-                "model_type": model_type,
-                "model_name": model_name,
-                "model_path": model_path,
-                "model_cache_dir": cache_dir,
-                "huggingface_token": hf_token,
-                "huggingface_token_file": hf_token_file,
-                "d3_correction": d3_correction,
-                "d3_functional": d3_functional,
-                "d3_damping": d3_damping,
-            },
-            "technical": {
-                "device": device,
-            },
-        }
-    )
+def _config_from_key(key: str) -> Config:
+    """Rebuild the :class:`Config` that :func:`_cache_key` was built from."""
+    payload = json.loads(key)
+    device = payload.pop("__device__")
+    return Config({"model": payload, "technical": {"device": device}})
 
 
 @functools.lru_cache(maxsize=2)
-def _load_calculator_cached(
-    model_type: str,
-    device: str,
-    model_name: str,
-    model_path: str | None,
-    model_cache_dir: str | None,
-    hf_token: str | None,
-    hf_token_file: str | None,
-    d3_correction: bool,
-    d3_functional: str,
-    d3_damping: str,
-) -> Any:
-    """Cached calculator loading (hashable args required by lru_cache)."""
-    cfg = _config_from_key(
-        (
-            model_type, device, model_name, model_path, model_cache_dir,
-            hf_token, hf_token_file, d3_correction, d3_functional, d3_damping,
-        )
-    )
-    return load_calculator(cfg)
+def _load_calculator_cached(key: str) -> Any:
+    """Cached calculator loading (hashable arg required by lru_cache)."""
+    return load_calculator(_config_from_key(key))
 
 
 @functools.lru_cache(maxsize=2)
-def _load_torchsim_cached(
-    model_type: str,
-    device: str,
-    model_name: str,
-    model_path: str | None,
-    model_cache_dir: str | None,
-    hf_token: str | None,
-    hf_token_file: str | None,
-    d3_correction: bool,
-    d3_functional: str,
-    d3_damping: str,
-) -> Any:
-    """Cached torch-sim model loading (hashable args required by lru_cache)."""
-    cfg = _config_from_key(
-        (
-            model_type, device, model_name, model_path, model_cache_dir,
-            hf_token, hf_token_file, d3_correction, d3_functional, d3_damping,
-        )
-    )
-    return load_torchsim_model(cfg)
+def _load_torchsim_cached(key: str) -> Any:
+    """Cached torch-sim model loading (hashable arg required by lru_cache)."""
+    return load_torchsim_model(_config_from_key(key))
 
 
 def _get_cached_calculator(config: Config) -> Any:
     """Return a cached ASE calculator for the given configuration."""
-    return _load_calculator_cached(*_cache_key(config))
+    return _load_calculator_cached(_cache_key(config))
 
 
 def _get_cached_torchsim_model(config: Config) -> Any:
     """Return a cached torch-sim model for the given configuration."""
-    return _load_torchsim_cached(*_cache_key(config))
+    return _load_torchsim_cached(_cache_key(config))
 
 
 # ---------------------------------------------------------------------------
