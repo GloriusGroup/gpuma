@@ -95,7 +95,11 @@ def log_optimization_summary(
     lines.append(f"  Total time:          {total_time:.2f} sec")
     if n_output > 0:
         lines.append(f"  Avg time/structure:  {total_time / n_output:.3f} sec")
-        lines.append(f"  Throughput:          {n_output / total_time:.1f} structures/sec")
+        # Guarded like the atom-throughput line below: total_time comes from a
+        # perf_counter delta, which a mocked or extremely short run can leave
+        # at exactly zero.
+        if total_time > 0:
+            lines.append(f"  Throughput:          {n_output / total_time:.1f} structures/sec")
     if atom_counts:
         lines.append(
             f"  Atoms per structure: {min(atom_counts)}-{max(atom_counts)}"

@@ -111,6 +111,45 @@ def test_read_multi_xyz_malformed_skips(tmp_path):
     assert structures[0].n_atoms == 3
 
 
+def test_read_multi_xyz_resyncs_after_a_bad_structure(tmp_path):
+    """A malformed block must not take the structures after it down with it.
+
+    Resynchronisation relies on the fact that a coordinate line never parses as
+    a bare integer, so the scan for the next atom count skips the rest of the
+    bad block and lands on the following header. That is load-bearing but
+    implicit, hence this guard.
+    """
+    content = (
+        "2\nfirst\nO 0 0 0\nH 1 0 0\n"
+        "3\nbad\nO 0 0 0\nH oops\nH 0 1 0\n"      # malformed atom line
+        "2\nthird\nN 0 0 0\nN 1 0 0\n"
+    )
+    f = tmp_path / "resync.xyz"
+    f.write_text(content)
+
+    structures = read_multi_xyz(str(f))
+
+    assert [s.comment for s in structures] == ["first", "third"]
+    assert structures[1].symbols == ["N", "N"]
+
+
+def test_read_multi_xyz_truncated_final_structure(tmp_path):
+    """Running out of file mid-structure still keeps what came before.
+
+    Note the declared count is trusted: a block claiming more atoms than the
+    file holds consumes whatever follows, so any structures after it are lost.
+    Only the truncated-at-EOF case is asserted here, where there is nothing
+    left to lose.
+    """
+    content = "2\nfirst\nO 0 0 0\nH 1 0 0\n5\ntruncated\nO 0 0 0\n"
+    f = tmp_path / "truncated.xyz"
+    f.write_text(content)
+
+    structures = read_multi_xyz(str(f))
+
+    assert [s.comment for s in structures] == ["first"]
+
+
 # ---------------------------------------------------------------------------
 # read_xyz_directory
 # ---------------------------------------------------------------------------

@@ -79,3 +79,25 @@ def test_log_optimization_summary_no_results(caplog):
 
     assert "Structures input:    0" in caplog.text
     assert "Structures output:   0" in caplog.text
+
+
+def test_summary_survives_zero_elapsed_time(caplog):
+    """total_time is a perf_counter delta and can round to exactly zero.
+
+    The atom-throughput line already guarded against it; the structure
+    throughput line divided unconditionally.
+    """
+    import logging as _logging
+
+    from gpuma.config import Config
+    from gpuma.structure import Structure
+    from gpuma.utils.logging_utils import log_optimization_summary
+
+    structures = [
+        Structure(symbols=["H"], coordinates=[(0.0, 0.0, 0.0)], charge=0, multiplicity=1)
+    ]
+    with caplog.at_level(_logging.INFO):
+        log_optimization_summary(structures, structures, 0.0, "batch", Config())
+
+    assert "GPUMA Optimization Summary" in caplog.text
+    assert "structures/sec" not in caplog.text
