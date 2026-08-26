@@ -456,25 +456,36 @@ def _optimize_batch(
     max_atoms_to_try = int(config.technical.max_atoms_to_try)
     steps_between_swaps = int(config.technical.steps_between_swaps)
 
-    effective_max_atoms = min(batched_state.n_atoms, max_atoms_to_try)
-    with timed_block("Memory estimation"):
-        batcher = InFlightAutoBatcher(
-            model,
-            memory_scales_with="n_edges",
-            memory_scaling_factor=memory_scaling_factor,
-            max_memory_padding=max_memory_padding,
-            max_atoms_to_try=effective_max_atoms,
-        )
+    # max_atoms_to_try bounds the autobatcher's probe for how much fits on the
+    # GPU, so it must describe the *device*, not the job. Passing
+    # min(batched_state.n_atoms, ...) tied the ceiling to the size of whatever
+    # was submitted: a two-structure run probed at most two structures' worth
+    # of memory, and the resulting max_memory_scaler was small enough that
+    # InFlightAutoBatcher rejected any later structure larger than the first
+    # ("State metric=N is greater than max_metric M") or, short of that, packed
+    # one system per batch and threw away the batching entirely.
+    batcher = InFlightAutoBatcher(
+        model,
+        memory_scales_with="n_edges",
+        memory_scaling_factor=memory_scaling_factor,
+        max_memory_padding=max_memory_padding,
+        max_atoms_to_try=max_atoms_to_try,
+    )
+    logger.debug(
+        "Autobatcher params: memory_scales_with=n_edges, "
+        "max_memory_padding=%.2f, max_atoms_to_try=%d, steps_between_swaps=%d",
+        max_memory_padding,
+        max_atoms_to_try,
+        steps_between_swaps,
+    )
 
-        batcher.load_states(batched_state)
-        logger.debug(
-            "Autobatcher params: memory_scales_with=n_edges, max_memory_scaler=%.0f, "
-            "max_memory_padding=%.2f, max_atoms=%d, steps_between_swaps=%d",
-            batcher.max_memory_scaler,
-            max_memory_padding,
-            effective_max_atoms,
-            steps_between_swaps,
-        )
+    # No batcher.load_states() here. torch_sim.optimize calls it itself, on the
+    # OptimState it builds via _chunked_apply -- which carries the optimizer's
+    # own tensors (FIRE velocities, LBFGS history) and so reflects the real
+    # footprint. Loading first is not merely redundant: _get_first_batch skips
+    # the estimate when max_memory_scaler is already set, so a pre-load pinned
+    # the ceiling to a measurement taken on the bare SimState and torch_sim
+    # never re-measured, leaving the batch packed against an underestimate.
 
     with timed_block("Optimization"):
         final_state = torch_sim.optimize(
