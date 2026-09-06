@@ -13,10 +13,14 @@ import pytest
 from gpuma.config import Config, load_config_from_file
 from gpuma.conformer_generation.embed import (
     CONF_BUDGET,
+    DEFAULT_PRUNE_RMS,
     _conf_budget,
+    _etkdg_params,
     _force_field_for,
     _gpu_ids_from_device,
     _prepare,
+    _prune_by_rmsd,
+    _rank_by_energy,
     generate_ensembles,
     generate_structures,
 )
@@ -43,6 +47,11 @@ INVALID_SMILES = "not_a_smiles"
 
 #: Keep conformer counts low; these tests check plumbing, not search quality.
 FEW_CONFS = 3
+
+#: Its global minimum needs an intramolecular O-H...O=C hydrogen bond. Rotating
+#: that O-H barely moves a heavy atom, so pruning raw embeddings collapsed the
+#: molecule to a single conformer and which rotamer you got was a lottery.
+SALICYLIC_ACID = "OC(=O)c1ccccc1O"
 
 
 @pytest.fixture
@@ -311,9 +320,176 @@ def test_generate_ensembles_preserves_order_around_failures(cpu_config):
 
 @pytest.mark.parametrize("bad", [0, -1])
 def test_generate_ensembles_rejects_nonpositive_count(cpu_config, bad):
-    """max_num_confs must be positive."""
+    """max_num_confs must be positive; None (keep-all) is the one exception."""
     with pytest.raises(ValueError, match="max_num_confs"):
         generate_ensembles([ETHANOL], bad, cpu_config)
+
+
+# ---------------------------------------------------------------------------
+# Keep-all mode (max_num_confs=None)
+# ---------------------------------------------------------------------------
+
+
+def test_generate_ensembles_keep_all_returns_every_pruned_conformer(cpu_config):
+    """None keeps whatever survives the embed-time RMSD prune -- no cap.
+
+    A cap far above the conformer budget cannot bite, so it must agree with
+    keep-all exactly; a cap of 1 must return a strict subset.
+    """
+    kwargs = {"n_confs": 8, "seed": 42}
+    (keep_all,) = generate_ensembles([BENZOIC_ACID], None, cpu_config, **kwargs)
+    (huge_cap,) = generate_ensembles([BENZOIC_ACID], 1000, cpu_config, **kwargs)
+    (capped,) = generate_ensembles([BENZOIC_ACID], 1, cpu_config, **kwargs)
+
+    assert len(keep_all) == len(huge_cap)
+    assert len(capped) == 1
+    assert len(keep_all) >= len(capped)
+
+
+def test_generate_ensembles_keep_all_is_reproducible(cpu_config):
+    """A fixed seed pins the keep-all ensemble, geometries included."""
+    kwargs = {"n_confs": 8, "seed": 42}
+    (first,) = generate_ensembles([ETHANOL], None, cpu_config, **kwargs)
+    (second,) = generate_ensembles([ETHANOL], None, cpu_config, **kwargs)
+
+    assert len(first) == len(second)
+    for a, b in zip(first, second, strict=True):
+        assert a.symbols == b.symbols
+        assert a.coordinates == pytest.approx(b.coordinates)
+
+
+def test_generate_ensembles_keep_all_first_agrees_with_generate_structures(cpu_config):
+    """Keep-all still sorts lowest energy first, like the single entry point."""
+    kwargs = {"n_confs": FEW_CONFS, "seed": 42}
+    (single,) = generate_structures([ETHANOL], cpu_config, **kwargs)
+    (ensemble,) = generate_ensembles([ETHANOL], None, cpu_config, **kwargs)
+
+    assert single.symbols == ensemble[0].symbols
+    assert single.coordinates == pytest.approx(ensemble[0].coordinates)
+
+
+# ---------------------------------------------------------------------------
+# RMSD pruning
+# ---------------------------------------------------------------------------
+
+
+def _square(scale: float = 1.0) -> list[tuple[float, float, float]]:
+    return [(0.0, 0.0, 0.0), (scale, 0.0, 0.0), (scale, scale, 0.0), (0.0, scale, 0.0)]
+
+
+def test_embedding_does_not_prune():
+    """Pruning is deferred, so ETKDG parameters must carry RDKit's -1 sentinel."""
+    assert _etkdg_params(42, random_coords=True).pruneRmsThresh == -1.0
+
+
+def test_prune_collapses_identical_conformers():
+    symbols = ["C", "C", "C", "C"]
+    coords = [_square(), _square(), _square()]
+
+    assert _prune_by_rmsd(symbols, coords, 0.35) == [0]
+
+
+def test_prune_keeps_distinct_conformers():
+    symbols = ["C", "C", "C", "C"]
+    coords = [_square(1.0), _square(3.0)]
+
+    assert _prune_by_rmsd(symbols, coords, 0.35) == [0, 1]
+
+
+def test_prune_is_invariant_to_rigid_motion():
+    """A translated, rotated copy is the same conformer."""
+    symbols = ["C", "C", "C", "C"]
+    shifted = [(y + 10.0, -x, z) for x, y, z in _square()]
+
+    assert _prune_by_rmsd(symbols, [_square(), shifted], 0.35) == [0]
+
+
+def test_prune_keeps_the_earliest_member_of_a_cluster():
+    """Callers sort by energy first, so index 0 of a cluster is its minimum."""
+    symbols = ["C", "C", "C", "C"]
+    nudged = [(x + 0.01, y, z) for x, y, z in _square()]
+    coords = [_square(), nudged, _square(3.0)]
+
+    assert _prune_by_rmsd(symbols, coords, 0.35) == [0, 2]
+
+
+@pytest.mark.parametrize("thresh", [0.0, -1.0])
+def test_prune_disabled_by_nonpositive_threshold(thresh):
+    symbols = ["C", "C", "C", "C"]
+    coords = [_square(), _square()]
+
+    assert _prune_by_rmsd(symbols, coords, thresh) == [0, 1]
+
+
+def test_prune_passes_through_when_too_few_heavy_atoms():
+    """Methane has one heavy atom; there is nothing to superimpose on."""
+    symbols = ["C", "H", "H", "H", "H"]
+    coords = [[(0.0, 0.0, 0.0)] * 5, [(1.0, 1.0, 1.0)] * 5]
+
+    assert _prune_by_rmsd(symbols, coords, 0.35) == [0, 1]
+
+
+def test_prune_ignores_hydrogen_positions():
+    """The metric is heavy-atom only, so moving an H alone is not a difference."""
+    symbols = ["C", "C", "C", "C", "H"]
+    base = [*_square(), (0.0, 0.0, 1.0)]
+    h_moved = [*_square(), (0.0, 0.0, -1.0)]
+
+    assert _prune_by_rmsd(symbols, [base, h_moved], 0.35) == [0]
+
+
+def test_hydrogen_bonded_rotamer_survives_pruning(cpu_config):
+    """Regression: pruning raw embeddings discarded this conformer entirely.
+
+    Salicylic acid's minimum carries an intramolecular O-H...O=C bond. The prune
+    now runs after minimization, where that rotamer is a distinct -- and lower --
+    minimum, so it has to come back.
+    """
+    import numpy as np
+
+    (ensemble,) = generate_ensembles(
+        [SALICYLIC_ACID], None, cpu_config, n_confs=50, seed=42
+    )
+    assert ensemble is not None
+    # The old embedding-time prune collapsed this molecule to exactly one
+    # conformer, so the count alone distinguishes the two behaviours.
+    assert len(ensemble) > 1
+
+    shortest = []
+    for structure in ensemble:
+        symbols = list(structure.symbols)
+        coords = np.asarray(structure.coordinates, dtype=float)
+        oxygens = [i for i, s in enumerate(symbols) if s == "O"]
+        for h, symbol in enumerate(symbols):
+            if symbol != "H":
+                continue
+            distances = sorted((float(np.linalg.norm(coords[h] - coords[o])), o) for o in oxygens)
+            if not distances or distances[0][0] > 1.2:
+                continue  # not a hydroxyl hydrogen
+            shortest.append(distances[1][0])
+
+    assert shortest, "no hydroxyl hydrogen found"
+    assert min(shortest) < 2.2, f"no hydrogen-bonded rotamer kept (best {min(shortest):.2f} A)"
+
+
+def test_prune_threshold_is_honoured_end_to_end(cpu_config):
+    """A larger threshold merges more conformers, a disabled one merges none."""
+    kwargs = {"n_confs": 20, "seed": 42}
+    (default,) = generate_ensembles([BENZOIC_ACID], None, cpu_config, **kwargs)
+    (coarse,) = generate_ensembles(
+        [BENZOIC_ACID], None, cpu_config, prune_rms_thresh=3.0, **kwargs
+    )
+    (unpruned,) = generate_ensembles(
+        [BENZOIC_ACID], None, cpu_config, prune_rms_thresh=0.0, **kwargs
+    )
+
+    assert len(coarse) <= len(default) <= len(unpruned)
+    assert len(coarse) < len(unpruned)
+
+
+def test_default_prune_threshold_unchanged():
+    """The value is morfeus's; only where it is applied has moved."""
+    assert DEFAULT_PRUNE_RMS == 0.35
 
 
 # ---------------------------------------------------------------------------
@@ -393,3 +569,61 @@ def test_mol_utils_raises_on_invalid_smiles(cpu_config):
 
     with pytest.raises(ValueError):
         smiles_to_structure(INVALID_SMILES, config=cpu_config)
+
+
+# ---------------------------------------------------------------------------
+# Energy ranking (GPU backend)
+# ---------------------------------------------------------------------------
+
+
+def test_rank_by_energy_orders_lowest_first():
+    """Position 0 is the winner, so it must carry the lowest energy."""
+    assert _rank_by_energy([10, 11, 12], [0.5, -2.0, 1.0], ETHANOL) == [11, 10, 12]
+
+
+def test_rank_by_energy_without_energies_keeps_embedding_order():
+    """No force field applied means there is nothing to rank on."""
+    assert _rank_by_energy([10, 11, 12], None, ETHANOL) == [10, 11, 12]
+
+
+def test_rank_by_energy_length_mismatch_keeps_embedding_order():
+    """A short energy list makes the pairing unknowable; do not guess it.
+
+    Ranking on it would index the wrong conformers and silently promote a
+    geometry that was never the minimum.
+    """
+    assert _rank_by_energy([10, 11, 12], [0.5, -2.0], ETHANOL) == [10, 11, 12]
+
+
+def test_rank_by_energy_ignores_extra_energies():
+    """Symmetric to the short case -- a long list is equally untrustworthy."""
+    assert _rank_by_energy([10, 11], [0.5, -2.0, -9.0], ETHANOL) == [10, 11]
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_rank_by_energy_sorts_non_finite_last(bad):
+    """A diverged minimization must never win the ensemble."""
+    ranked = _rank_by_energy([10, 11, 12], [bad, 1.0, -1.0], ETHANOL)
+    assert ranked[-1] == 10
+    assert ranked[0] == 12
+
+
+def test_rank_by_energy_nan_does_not_capture_position_zero():
+    """NaN first in the input is the case that regresses if the key is dropped.
+
+    ``sorted`` only ever calls ``<``, and every comparison against NaN is
+    False, so an already-first NaN is never moved by a plain value sort.
+    """
+    ranked = _rank_by_energy([10, 11, 12], [float("nan"), 5.0, 3.0], ETHANOL)
+    assert ranked[0] == 12
+
+
+def test_rank_by_energy_is_stable_for_ties():
+    """Equal energies keep embedding order, so runs stay reproducible."""
+    assert _rank_by_energy([10, 11, 12], [1.0, 1.0, 1.0], ETHANOL) == [10, 11, 12]
+
+
+def test_rank_by_energy_returns_a_new_list():
+    """The caller indexes ``ranked`` while ``cids`` stays live; no aliasing."""
+    cids = [10, 11, 12]
+    assert _rank_by_energy(cids, None, ETHANOL) is not cids
