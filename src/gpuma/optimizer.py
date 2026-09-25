@@ -14,6 +14,7 @@ selected automatically from the configuration.
 from __future__ import annotations
 
 import functools
+import json
 import logging
 from typing import Any
 
@@ -37,112 +38,55 @@ _DEFAULT_FORCE_CRITERION: float = float(
 # ---------------------------------------------------------------------------
 
 
-def _cache_key(config: Config) -> tuple:
-    """Extract a hashable cache key from configuration parameters."""
-    mdl = config.model
-    tech = config.technical
-    return (
-        resolve_model_type(config),
-        str(tech.device),
-        str(mdl.model_name),
-        str(mdl.model_path) if mdl.model_path else None,
-        str(mdl.model_cache_dir) if mdl.model_cache_dir else None,
-        str(mdl.huggingface_token) if mdl.huggingface_token else None,
-        str(mdl.huggingface_token_file) if mdl.huggingface_token_file else None,
-        bool(mdl.get("d3_correction", False)),
-        str(mdl.get("d3_functional", "PBE")),
-        str(mdl.get("d3_damping", "BJ")),
-    )
+def _cache_key(config: Config) -> str:
+    """Return a hashable key covering everything the model loaders read.
+
+    Serializes the whole ``model`` section plus the device rather than listing
+    fields one by one. The enumerated version silently omitted ``model_modal``,
+    so every SevenNet run through this module loaded the checkpoint's default
+    fidelity instead of the configured one, and two configs differing only in
+    ``model_modal`` collided on the same cache entry. Any field added to the
+    model section in future is covered here automatically.
+
+    ``model_type`` is stored in canonical form so that aliases which resolve to
+    the same backend (``"7net"``/``"sevennet"``) share one cache entry.
+    """
+    payload = dict(config.model.to_dict())
+    payload["model_type"] = resolve_model_type(config)
+    payload["__device__"] = str(config.technical.device)
+    # sort_keys so key ordering in the config file cannot split the cache;
+    # default=str so an unexpected non-JSON value degrades to its repr rather
+    # than raising and taking the whole run down.
+    return json.dumps(payload, sort_keys=True, default=str)
 
 
-def _config_from_key(key: tuple) -> Config:
-    """Reconstruct a minimal :class:`Config` from a cache key tuple."""
-    (
-        model_type,
-        device,
-        model_name,
-        model_path,
-        cache_dir,
-        hf_token,
-        hf_token_file,
-        d3_correction,
-        d3_functional,
-        d3_damping,
-    ) = key
-    return Config(
-        {
-            "model": {
-                "model_type": model_type,
-                "model_name": model_name,
-                "model_path": model_path,
-                "model_cache_dir": cache_dir,
-                "huggingface_token": hf_token,
-                "huggingface_token_file": hf_token_file,
-                "d3_correction": d3_correction,
-                "d3_functional": d3_functional,
-                "d3_damping": d3_damping,
-            },
-            "technical": {
-                "device": device,
-            },
-        }
-    )
+def _config_from_key(key: str) -> Config:
+    """Rebuild the :class:`Config` that :func:`_cache_key` was built from."""
+    payload = json.loads(key)
+    device = payload.pop("__device__")
+    return Config({"model": payload, "technical": {"device": device}})
 
 
 @functools.lru_cache(maxsize=2)
-def _load_calculator_cached(
-    model_type: str,
-    device: str,
-    model_name: str,
-    model_path: str | None,
-    model_cache_dir: str | None,
-    hf_token: str | None,
-    hf_token_file: str | None,
-    d3_correction: bool,
-    d3_functional: str,
-    d3_damping: str,
-) -> Any:
-    """Cached calculator loading (hashable args required by lru_cache)."""
-    cfg = _config_from_key(
-        (
-            model_type, device, model_name, model_path, model_cache_dir,
-            hf_token, hf_token_file, d3_correction, d3_functional, d3_damping,
-        )
-    )
-    return load_calculator(cfg)
+def _load_calculator_cached(key: str) -> Any:
+    """Cached calculator loading (hashable arg required by lru_cache)."""
+    return load_calculator(_config_from_key(key))
 
 
 @functools.lru_cache(maxsize=2)
-def _load_torchsim_cached(
-    model_type: str,
-    device: str,
-    model_name: str,
-    model_path: str | None,
-    model_cache_dir: str | None,
-    hf_token: str | None,
-    hf_token_file: str | None,
-    d3_correction: bool,
-    d3_functional: str,
-    d3_damping: str,
-) -> Any:
-    """Cached torch-sim model loading (hashable args required by lru_cache)."""
-    cfg = _config_from_key(
-        (
-            model_type, device, model_name, model_path, model_cache_dir,
-            hf_token, hf_token_file, d3_correction, d3_functional, d3_damping,
-        )
-    )
-    return load_torchsim_model(cfg)
+def _load_torchsim_cached(key: str) -> Any:
+    """Cached torch-sim model loading (hashable arg required by lru_cache)."""
+    return load_torchsim_model(_config_from_key(key))
 
 
 def _get_cached_calculator(config: Config) -> Any:
     """Return a cached ASE calculator for the given configuration."""
-    return _load_calculator_cached(*_cache_key(config))
+    return _load_calculator_cached(_cache_key(config))
 
 
 def _get_cached_torchsim_model(config: Config) -> Any:
     """Return a cached torch-sim model for the given configuration."""
-    return _load_torchsim_cached(*_cache_key(config))
+    return _load_torchsim_cached(_cache_key(config))
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +245,7 @@ def optimize_single_structure(
 def optimize_structure_batch(
     structures: list[Structure],
     config: Config | None = None,
-) -> list[Structure]:
+) -> list[Structure | None]:
     """Optimize a list of structures and return them with updated coordinates.
 
     The optimization mode is controlled by
@@ -321,8 +265,18 @@ def optimize_structure_batch(
 
     Returns
     -------
-    list[Structure]
-        Optimized structures with coordinates and energies set.
+    list[Structure | None]
+        One entry per input, in input order. ``None`` marks a structure whose
+        optimization failed, so a single bad geometry cannot abort the run.
+
+        .. versionchanged::
+            Previously the failures were simply left out, which silently
+            shortened the list and shifted every later result onto the wrong
+            input. Callers that index results against inputs, or label output
+            by position, were quietly misattributing geometries. Iterating
+            callers now need to skip ``None``; this matches
+            :func:`gpuma.conformer_generation.embed.generate_structures`,
+            which already reports per-molecule failure this way.
 
     Raises
     ------
@@ -373,23 +327,29 @@ def optimize_structure_batch(
 def _optimize_sequential(
     structures: list[Structure],
     config: Config,
-) -> list[Structure]:
-    """Optimize structures one-by-one using ASE with a shared calculator."""
+) -> list[Structure | None]:
+    """Optimize structures one-by-one using ASE with a shared calculator.
+
+    Returns one entry per input, in input order, with ``None`` where the
+    optimization raised. Appending only the successes -- as this used to --
+    made the returned list shorter than the input and shifted every result
+    after a failure onto the wrong structure, with nothing to signal it.
+    """
     calculator = _get_cached_calculator(config)
 
     logger.info("Starting sequential optimization of %d structures", len(structures))
-    results: list[Structure] = []
+    results: list[Structure | None] = [None] * len(structures)
+    n_ok = 0
     for i, struct in enumerate(structures):
         try:
-            optimized = optimize_single_structure(struct, config, calculator)
-            results.append(optimized)
+            results[i] = optimize_single_structure(struct, config, calculator)
+            n_ok += 1
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.warning("Structure %d optimization failed: %s", i + 1, exc)
-            continue
 
     logger.info(
         "Sequential optimization completed. %d/%d successful",
-        len(results),
+        n_ok,
         len(structures),
     )
     return results
@@ -398,7 +358,7 @@ def _optimize_sequential(
 def _optimize_batch(
     structures: list[Structure],
     config: Config,
-) -> list[Structure]:
+) -> list[Structure | None]:
     """Optimize structures in parallel using torch-sim batch inference."""
     import torch
     import torch_sim
@@ -456,25 +416,36 @@ def _optimize_batch(
     max_atoms_to_try = int(config.technical.max_atoms_to_try)
     steps_between_swaps = int(config.technical.steps_between_swaps)
 
-    effective_max_atoms = min(batched_state.n_atoms, max_atoms_to_try)
-    with timed_block("Memory estimation"):
-        batcher = InFlightAutoBatcher(
-            model,
-            memory_scales_with="n_edges",
-            memory_scaling_factor=memory_scaling_factor,
-            max_memory_padding=max_memory_padding,
-            max_atoms_to_try=effective_max_atoms,
-        )
+    # max_atoms_to_try bounds the autobatcher's probe for how much fits on the
+    # GPU, so it must describe the *device*, not the job. Passing
+    # min(batched_state.n_atoms, ...) tied the ceiling to the size of whatever
+    # was submitted: a two-structure run probed at most two structures' worth
+    # of memory, and the resulting max_memory_scaler was small enough that
+    # InFlightAutoBatcher rejected any later structure larger than the first
+    # ("State metric=N is greater than max_metric M") or, short of that, packed
+    # one system per batch and threw away the batching entirely.
+    batcher = InFlightAutoBatcher(
+        model,
+        memory_scales_with="n_edges",
+        memory_scaling_factor=memory_scaling_factor,
+        max_memory_padding=max_memory_padding,
+        max_atoms_to_try=max_atoms_to_try,
+    )
+    logger.debug(
+        "Autobatcher params: memory_scales_with=n_edges, "
+        "max_memory_padding=%.2f, max_atoms_to_try=%d, steps_between_swaps=%d",
+        max_memory_padding,
+        max_atoms_to_try,
+        steps_between_swaps,
+    )
 
-        batcher.load_states(batched_state)
-        logger.debug(
-            "Autobatcher params: memory_scales_with=n_edges, max_memory_scaler=%.0f, "
-            "max_memory_padding=%.2f, max_atoms=%d, steps_between_swaps=%d",
-            batcher.max_memory_scaler,
-            max_memory_padding,
-            effective_max_atoms,
-            steps_between_swaps,
-        )
+    # No batcher.load_states() here. torch_sim.optimize calls it itself, on the
+    # OptimState it builds via _chunked_apply -- which carries the optimizer's
+    # own tensors (FIRE velocities, LBFGS history) and so reflects the real
+    # footprint. Loading first is not merely redundant: _get_first_batch skips
+    # the estimate when max_memory_scaler is already set, so a pre-load pinned
+    # the ceiling to a measurement taken on the bare SimState and torch_sim
+    # never re-measured, leaving the batch packed against an underestimate.
 
     with timed_block("Optimization"):
         final_state = torch_sim.optimize(

@@ -246,3 +246,80 @@ class TestCliGlobalFlags:
         assert main([
             "--model-type", "orb", "optimize", "--smiles", "C", "-o", str(out), "-c", cfg,
         ]) == 0
+
+
+# ---------------------------------------------------------------------------
+# Conformer count resolution
+# ---------------------------------------------------------------------------
+
+
+def test_conformers_zero_is_rejected():
+    """--conformers 0 used to fall through to the config value.
+
+    ``args.conformers or config...`` treats 0 as "not given", so asking for
+    none quietly produced however many the config named.
+    """
+    import argparse
+
+    from gpuma.cli import _resolve_conformer_count
+
+    args = argparse.Namespace(conformers=0)
+    with pytest.raises(ValueError, match="--conformers must be positive"):
+        _resolve_conformer_count(args, Config())
+
+
+def test_conformers_negative_is_rejected():
+    """Symmetric to the zero case."""
+    import argparse
+
+    from gpuma.cli import _resolve_conformer_count
+
+    with pytest.raises(ValueError, match="--conformers must be positive"):
+        _resolve_conformer_count(argparse.Namespace(conformers=-3), Config())
+
+
+def test_conformers_omitted_falls_back_to_config():
+    """Omitting the flag still takes the configured count."""
+    import argparse
+
+    from gpuma.cli import _resolve_conformer_count
+
+    config = Config({"conformer_generation": {"max_num_conformers": 7}})
+    assert _resolve_conformer_count(argparse.Namespace(conformers=None), config) == 7
+
+
+def test_conformers_explicit_value_wins():
+    """An explicit count overrides the config."""
+    import argparse
+
+    from gpuma.cli import _resolve_conformer_count
+
+    config = Config({"conformer_generation": {"max_num_conformers": 7}})
+    assert _resolve_conformer_count(argparse.Namespace(conformers=3), config) == 3
+
+
+def test_generate_passes_configured_multiplicity(tmp_path, monkeypatch):
+    """'generate' ignored config multiplicity while 'ensemble' honoured it."""
+    import argparse
+
+    import gpuma.cli as cli
+    from gpuma.structure import Structure
+
+    seen = {}
+
+    def fake_ensemble(smiles, num_confs, multiplicity=None, seed=None, config=None):
+        seen["multiplicity"] = multiplicity
+        return [
+            Structure(symbols=["He"], coordinates=[(0.0, 0.0, 0.0)],
+                      charge=0, multiplicity=multiplicity or 1)
+        ]
+
+    monkeypatch.setattr(cli, "smiles_to_ensemble", fake_ensemble)
+
+    config = Config({"optimization": {"multiplicity": 3}})
+    args = argparse.Namespace(
+        smiles="[He]", conformers=1, output=str(tmp_path / "out.xyz")
+    )
+    cli.cmd_generate(args, config)
+
+    assert seen["multiplicity"] == 3

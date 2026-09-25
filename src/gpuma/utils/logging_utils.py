@@ -52,7 +52,9 @@ def log_optimization_summary(
     input_structures:
         Structures that were submitted for optimization.
     results:
-        Successfully optimized structures.
+        One entry per input, in input order, with ``None`` where the
+        optimization failed. Those entries are excluded from every statistic
+        below, so the success rate reflects what actually came back.
     total_time:
         Wall-clock time in seconds.
     mode:
@@ -64,9 +66,10 @@ def log_optimization_summary(
     from ..config import resolve_model_type
 
     n_input = len(input_structures)
-    n_output = len(results)
-    energies = [s.energy for s in results if s.energy is not None]
-    atom_counts = [s.n_atoms for s in results]
+    optimized = [s for s in results if s is not None]
+    n_output = len(optimized)
+    energies = [s.energy for s in optimized if s.energy is not None]
+    atom_counts = [s.n_atoms for s in optimized]
 
     model_name = getattr(config.model, "model_name", "unknown")
     model_type = resolve_model_type(config)
@@ -95,7 +98,11 @@ def log_optimization_summary(
     lines.append(f"  Total time:          {total_time:.2f} sec")
     if n_output > 0:
         lines.append(f"  Avg time/structure:  {total_time / n_output:.3f} sec")
-        lines.append(f"  Throughput:          {n_output / total_time:.1f} structures/sec")
+        # Guarded like the atom-throughput line below: total_time comes from a
+        # perf_counter delta, which a mocked or extremely short run can leave
+        # at exactly zero.
+        if total_time > 0:
+            lines.append(f"  Throughput:          {n_output / total_time:.1f} structures/sec")
     if atom_counts:
         lines.append(
             f"  Atoms per structure: {min(atom_counts)}-{max(atom_counts)}"

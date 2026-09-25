@@ -284,3 +284,118 @@ def test_batch_optimizer_case_normalized():
 
     cfg = Config({"optimization": {"batch_optimizer": "Fire"}})
     assert cfg.optimization.batch_optimizer == "fire"
+
+
+# ---------------------------------------------------------------------------
+# Model cache key
+# ---------------------------------------------------------------------------
+
+
+def _sevennet_config(modal, device="cpu", model_type="7net"):
+    from gpuma.config import Config
+
+    return Config(
+        {
+            "model": {
+                "model_type": model_type,
+                "model_name": "7net-omni",
+                "model_modal": modal,
+            },
+            "technical": {"device": device},
+        }
+    )
+
+
+def test_cache_key_round_trip_preserves_model_modal():
+    """The loaders read model_modal, so the key must carry it.
+
+    Dropping it made every SevenNet run load the checkpoint's default fidelity
+    instead of the configured one.
+    """
+    from gpuma.optimizer import _cache_key, _config_from_key
+
+    rebuilt = _config_from_key(_cache_key(_sevennet_config("omol25_high")))
+    assert rebuilt.model.get("model_modal") == "omol25_high"
+
+
+def test_cache_key_separates_distinct_modals():
+    """Two fidelities of one checkpoint must not share a cache entry."""
+    from gpuma.optimizer import _cache_key
+
+    assert _cache_key(_sevennet_config("omol25_high")) != _cache_key(
+        _sevennet_config("spice")
+    )
+
+
+def test_cache_key_is_stable_for_equal_configs():
+    """Equal configs must hit the cache, or the model reloads every call."""
+    from gpuma.optimizer import _cache_key
+
+    assert _cache_key(_sevennet_config("spice")) == _cache_key(
+        _sevennet_config("spice")
+    )
+
+
+def test_cache_key_ignores_key_ordering():
+    """Key order in the config file must not split the cache."""
+    from gpuma.config import Config
+    from gpuma.optimizer import _cache_key
+
+    a = Config({"model": {"model_name": "7net-omni", "model_type": "7net"},
+                "technical": {"device": "cpu"}})
+    b = Config({"model": {"model_type": "7net", "model_name": "7net-omni"},
+                "technical": {"device": "cpu"}})
+    assert _cache_key(a) == _cache_key(b)
+
+
+def test_cache_key_collapses_model_type_aliases():
+    """Aliases naming one backend should share a loaded model."""
+    from gpuma.optimizer import _cache_key
+
+    assert _cache_key(_sevennet_config("spice", model_type="7net")) == _cache_key(
+        _sevennet_config("spice", model_type="sevennet")
+    )
+
+
+def test_cache_key_separates_devices():
+    """A model loaded onto one GPU must not be handed out for another."""
+    from gpuma.optimizer import _cache_key
+
+    assert _cache_key(_sevennet_config("spice", device="cpu")) != _cache_key(
+        _sevennet_config("spice", device="cuda:1")
+    )
+
+
+def test_cache_key_separates_d3_correction():
+    """D3 changes the loaded object, so it must not be cached across the flag."""
+    from gpuma.config import Config
+    from gpuma.optimizer import _cache_key
+
+    base = {"model_type": "orb", "model_name": "orb_v3_direct_omol"}
+    plain = Config({"model": base, "technical": {"device": "cpu"}})
+    with_d3 = Config({"model": {**base, "d3_correction": True},
+                      "technical": {"device": "cpu"}})
+    assert _cache_key(plain) != _cache_key(with_d3)
+
+
+def test_cache_key_round_trip_preserves_types():
+    """d3_correction must come back as a bool, not the string "True"."""
+    from gpuma.config import Config
+    from gpuma.optimizer import _cache_key, _config_from_key
+
+    cfg = Config({"model": {"model_type": "orb", "model_name": "orb_v3_direct_omol",
+                            "d3_correction": True},
+                  "technical": {"device": "cpu"}})
+    rebuilt = _config_from_key(_cache_key(cfg))
+    assert rebuilt.model.d3_correction is True
+
+
+def test_cache_key_covers_fields_added_later():
+    """Unknown model keys ride along, so a new field cannot be silently lost."""
+    from gpuma.config import Config
+    from gpuma.optimizer import _cache_key, _config_from_key
+
+    cfg = Config({"model": {"model_type": "orb", "model_name": "orb_v3_direct_omol",
+                            "some_future_knob": "xyz"},
+                  "technical": {"device": "cpu"}})
+    assert _config_from_key(_cache_key(cfg)).model.get("some_future_knob") == "xyz"

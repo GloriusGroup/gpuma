@@ -367,6 +367,22 @@ def _cli_override(args, attr: str, config_val: int) -> int:
     return int(cli_val) if cli_val is not None else int(config_val)
 
 
+def _resolve_conformer_count(args, config: Config) -> int:
+    """Return the conformer count, preferring an explicit ``--conformers``.
+
+    Tests ``is not None`` rather than truthiness: ``--conformers 0`` used to
+    fall through to the config value, quietly generating conformers after the
+    user asked for none. Zero is rejected instead, where the message names the
+    flag that caused it.
+    """
+    requested = getattr(args, "conformers", None)
+    if requested is None:
+        return int(config.conformer_generation.max_num_conformers)
+    if requested <= 0:
+        raise ValueError(f"--conformers must be positive, got {requested}")
+    return int(requested)
+
+
 def cmd_optimize(args, config: Config) -> None:
     """Handle the single-structure optimization command.
 
@@ -422,7 +438,7 @@ def cmd_ensemble(args, config: Config) -> None:
     batch inference.
     """
     try:
-        num_conf = args.conformers or config.conformer_generation.max_num_conformers
+        num_conf = _resolve_conformer_count(args, config)
         logger.info("Generating %d conformers for SMILES: %s", num_conf, args.smiles)
         config.conformer_generation.max_num_conformers = num_conf
 
@@ -516,13 +532,21 @@ def cmd_generate(args, config: Config) -> None:
     optimization.
     """
     try:
-        num_conf = args.conformers or config.conformer_generation.max_num_conformers
+        num_conf = _resolve_conformer_count(args, config)
         logger.info(
             "Generating %d conformers for SMILES (no optimization): %s",
             num_conf,
             args.smiles,
         )
-        structures = smiles_to_ensemble(args.smiles, num_conf, config=config)
+        # multiplicity was omitted here, so smiles_to_ensemble fell back to its
+        # own default of 1 and silently ignored the configured value -- unlike
+        # the 'ensemble' command, which passes it.
+        structures = smiles_to_ensemble(
+            args.smiles,
+            num_conf,
+            multiplicity=int(config.optimization.multiplicity),
+            config=config,
+        )
         comments = [
             f"Generated conformer {i + 1} from SMILES: {args.smiles}"
             for i in range(len(structures))
