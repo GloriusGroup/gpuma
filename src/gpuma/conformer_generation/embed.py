@@ -24,6 +24,11 @@ is no energy yet to tell them apart. Salicylic acid collapsed to a single
 conformer that way. After minimization the hydrogen-bonded rotamer is a
 distinct minimum -- usually the lowest one -- so an energy-ordered prune keeps
 it.
+
+That prune is index-matched over heavy atoms by default. ``prune_symmetry``
+swaps in an RMSD taken over the molecular graph's automorphisms, and over polar
+hydrogens as well as heavy atoms: it collapses symmetry-equivalent orientations
+the default keeps, and separates rotamers only a polar hydrogen distinguishes.
 """
 
 from __future__ import annotations
@@ -162,8 +167,16 @@ def _etkdg_params(seed: int, random_coords: bool, n_threads: int = 1):
     return p
 
 
-def _prune_by_rmsd(symbols, coordinates, thresh: float) -> list[int]:
-    """Greedy heavy-atom RMSD prune over an *energy-sorted* conformer list.
+def _prune_by_rmsd(
+    symbols,
+    coordinates,
+    thresh: float,
+    *,
+    symmetric: bool = False,
+    mol=None,
+    smiles: str = "",
+) -> list[int]:
+    """Greedy RMSD prune over an *energy-sorted* conformer list.
 
     Walks the list from lowest energy downwards and keeps a conformer only when
     it is further than ``thresh`` from every conformer already kept, so the
@@ -171,10 +184,12 @@ def _prune_by_rmsd(symbols, coordinates, thresh: float) -> list[int]:
     must therefore sort before calling; pruning an unsorted list keeps whichever
     conformer happened to come first.
 
-    RMSD is index-matched over heavy atoms after optimal superposition (Kabsch),
-    with no graph-automorphism search. That deliberately matches morfeus's
-    ``AlignMolConformers`` path so the two backends prune identically; the price
-    is that symmetry-equivalent orientations are not recognised as duplicates.
+    The default metric is index-matched over heavy atoms after optimal
+    superposition (Kabsch), which matches morfeus's ``AlignMolConformers`` path
+    so the two backends prune identically, at the price of not recognising
+    symmetry-equivalent orientations as duplicates. ``symmetric`` swaps in
+    :func:`~gpuma.conformer_generation.rmsd.symmetric_rmsd_fn`, which does, and
+    which falls back to Kabsch for any molecule it cannot serve.
 
     Parameters
     ----------
@@ -183,46 +198,43 @@ def _prune_by_rmsd(symbols, coordinates, thresh: float) -> list[int]:
     coordinates:
         One ``(N, 3)`` coordinate set per conformer, lowest energy first.
     thresh:
-        Heavy-atom RMSD in Angstrom below which two conformers are the same.
-        Non-positive disables pruning.
+        RMSD in Angstrom below which two conformers are the same. Non-positive
+        disables pruning.
+    symmetric:
+        Compare over the molecular graph's automorphisms rather than by index.
+    mol:
+        The ``AddHs`` mol behind ``symbols``; only read when ``symmetric``.
+    smiles:
+        Named in the warning when the symmetric metric is declined.
 
     Returns
     -------
     list[int]
         Indices into ``coordinates`` to keep, in input (energy) order.
     """
-    import numpy as np
+    from .rmsd import kabsch_rmsd_fn, symmetric_rmsd_fn
 
     n_confs = len(coordinates)
     if thresh is None or thresh <= 0 or n_confs < 2:
         return list(range(n_confs))
 
-    heavy = [i for i, symbol in enumerate(symbols) if symbol != "H"]
-    if len(heavy) < 2:
+    if sum(1 for symbol in symbols if symbol != "H") < 2:
         # Nothing to superimpose on -- e.g. methane. Any two conformers of such
         # a molecule are the same up to rotation, but saying so here would drop
-        # conformers the caller cannot get back, so leave them alone.
+        # conformers the caller cannot get back, so leave them alone. Checked
+        # before the metric is chosen, so ``symmetric`` cannot route around it.
         return list(range(n_confs))
 
-    centred = []
-    for xyz in coordinates:
-        block = np.asarray(xyz, dtype=float)[heavy]
-        centred.append(block - block.mean(axis=0))
+    rmsd = symmetric_rmsd_fn(mol, symbols, coordinates, smiles) if symmetric else None
+    if rmsd is None:
+        rmsd = kabsch_rmsd_fn(symbols, coordinates)
+    if rmsd is None:
+        return list(range(n_confs))
 
-    n_heavy = len(heavy)
     kept: list[int] = []
-    kept_coords: list = []
-    for i, probe in enumerate(centred):
-        for reference in kept_coords:
-            u, _, vt = np.linalg.svd(probe.T @ reference)
-            flip = 1.0 if np.linalg.det(u @ vt) > 0 else -1.0
-            rotation = u @ np.diag([1.0, 1.0, flip]) @ vt
-            delta = probe @ rotation - reference
-            if float(np.sqrt((delta * delta).sum() / n_heavy)) <= thresh:
-                break
-        else:
+    for i in range(n_confs):
+        if not any(rmsd(i, j) <= thresh for j in kept):
             kept.append(i)
-            kept_coords.append(probe)
     return kept
 
 
@@ -325,7 +337,16 @@ def _force_field_for(mol) -> str | None:
     return None
 
 
-def _embed_cpu(prepared, n_confs_override, seed, prune_rms, multiplicity, n_threads, n_keep=1):
+def _embed_cpu(
+    prepared,
+    n_confs_override,
+    seed,
+    prune_rms,
+    multiplicity,
+    n_threads,
+    n_keep=1,
+    prune_symmetry=False,
+):
     """CPU backend: morfeus, one molecule at a time.
 
     Uses :class:`morfeus.conformer.ConformerEnsemble` so CPU results stay
@@ -397,7 +418,14 @@ def _embed_cpu(prepared, n_confs_override, seed, prune_rms, multiplicity, n_thre
             logger.warning("no usable conformers for %s", smiles)
             continue
 
-        survivors = _prune_by_rmsd(records[0][0], [coords for _, coords in records], prune_rms)
+        survivors = _prune_by_rmsd(
+            records[0][0],
+            [coords for _, coords in records],
+            prune_rms,
+            symmetric=prune_symmetry,
+            mol=mol,
+            smiles=smiles,
+        )
         kept = [
             Structure(
                 symbols=records[i][0],
@@ -423,6 +451,7 @@ def _embed_gpu(
     gpu_ids,
     batch_size,
     n_keep=1,
+    prune_symmetry=False,
 ):
     """GPU backend: embed and minimize the whole batch via nvMolKit.
 
@@ -498,7 +527,14 @@ def _embed_gpu(
             # same helper as the CPU backend.
             symbols = [atom.GetSymbol() for atom in mol.GetAtoms()]
             ranked_coords = [mol.GetConformer(cid).GetPositions() for cid in ranked]
-            survivors = _prune_by_rmsd(symbols, ranked_coords, prune_rms)
+            survivors = _prune_by_rmsd(
+                symbols,
+                ranked_coords,
+                prune_rms,
+                symmetric=prune_symmetry,
+                mol=mol,
+                smiles=smiles,
+            )
             kept = [
                 _to_structure(mol, ranked[i], charge, multiplicity, smiles)
                 for i in survivors[:n_keep]
@@ -523,6 +559,7 @@ def _generate(
     n_threads: int = 1,
     allow_cpu_fallback: bool = True,
     n_keep: int | None = 1,
+    prune_symmetry: bool = False,
 ) -> list[list[Structure] | None]:
     """Convert a list of SMILES to 3D structures as a single batch.
 
@@ -581,6 +618,11 @@ def _generate(
     n_keep:
         Maximum conformers *returned* per molecule, lowest energy first.
         ``None`` keeps every conformer surviving the post-minimization RMSD prune.
+    prune_symmetry:
+        Prune over the graph's automorphisms, comparing polar hydrogens as well
+        as heavy atoms. Collapses symmetry-equivalent orientations and keeps
+        rotamers only a polar hydrogen separates; a molecule whose symmetry
+        group is too large to afford falls back to the index-matched default.
 
     Returns
     -------
@@ -629,7 +671,14 @@ def _generate(
 
     if gpu_ids is None:
         out = _embed_cpu(
-            prepared, n_confs, seed, prune_rms_thresh, multiplicity, n_threads, n_keep
+            prepared,
+            n_confs,
+            seed,
+            prune_rms_thresh,
+            multiplicity,
+            n_threads,
+            n_keep,
+            prune_symmetry,
         )
     else:
         try:
@@ -645,13 +694,21 @@ def _generate(
                 gpu_ids,
                 batch_size,
                 n_keep,
+                prune_symmetry,
             )
         except Exception as exc:  # noqa: BLE001 - a GPU fault must not lose the run
             if not allow_cpu_fallback:
                 raise
             logger.warning("GPU embedding unavailable (%s); falling back to CPU", exc)
             out = _embed_cpu(
-                prepared, n_confs, seed, prune_rms_thresh, multiplicity, n_threads, n_keep
+                prepared,
+                n_confs,
+                seed,
+                prune_rms_thresh,
+                multiplicity,
+                n_threads,
+                n_keep,
+                prune_symmetry,
             )
 
     for idx, structures in out.items():
@@ -670,6 +727,7 @@ def generate_structures(
     batch_size: int = 500,
     n_threads: int = 1,
     allow_cpu_fallback: bool = True,
+    prune_symmetry: bool = False,
 ) -> list[Structure | None]:
     """Convert SMILES to one 3D structure each, as a single batch.
 
@@ -713,6 +771,11 @@ def generate_structures(
         on CPU. Set ``False`` to re-raise instead, so a caller that
         parallelizes CPU work itself can choose its own strategy rather than
         silently getting a serial CPU run.
+    prune_symmetry:
+        Prune over the graph's automorphisms, comparing polar hydrogens as well
+        as heavy atoms. Collapses symmetry-equivalent orientations and keeps
+        rotamers only a polar hydrogen separates; a molecule whose symmetry
+        group is too large to afford falls back to the index-matched default.
 
     Returns
     -------
@@ -739,6 +802,7 @@ def generate_structures(
         n_threads,
         allow_cpu_fallback,
         n_keep=1,
+        prune_symmetry=prune_symmetry,
     )
     return [structures[0] if structures else None for structures in batches]
 
@@ -755,6 +819,7 @@ def generate_ensembles(
     batch_size: int = 500,
     n_threads: int = 1,
     allow_cpu_fallback: bool = True,
+    prune_symmetry: bool = False,
 ) -> list[list[Structure] | None]:
     """Convert SMILES to conformer ensembles, as a single batch.
 
@@ -800,4 +865,5 @@ def generate_ensembles(
         n_threads,
         allow_cpu_fallback,
         n_keep=max_num_confs,
+        prune_symmetry=prune_symmetry,
     )
