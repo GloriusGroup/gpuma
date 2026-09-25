@@ -155,3 +155,97 @@ class TestFairchemModelRegistry:
         """AVAILABLE_FAIRCHEM_MODELS contains all expected UMA models."""
         assert len(AVAILABLE_FAIRCHEM_MODELS) >= 3
         assert "uma-s-1p2" in AVAILABLE_FAIRCHEM_MODELS
+
+
+class TestFairchemD3Caching:
+    """_FairchemD3Calculator must evaluate each geometry once, not twice.
+
+    Both the Fairchem calculator and the D3 model are stubs here: the property
+    under test is how many times the wrapper calls through for a given
+    geometry, which real models would only make slower to measure.
+    """
+
+    @staticmethod
+    def _wrapper():
+        import numpy as np
+        import torch
+
+        from gpuma.models.dispersion import _FairchemD3Calculator
+
+        calls = {"ml": 0, "d3": 0}
+
+        class FakeFairchem:
+            def __init__(self):
+                self.results = {}
+
+            def calculate(self, atoms=None, properties=None, system_changes=None):
+                calls["ml"] += 1
+                self.results = {
+                    "energy": float(len(atoms)),
+                    "forces": np.zeros((len(atoms), 3)),
+                }
+
+        class FakeD3:
+            dtype = torch.float64
+
+            def forward(self, state):
+                calls["d3"] += 1
+                n = state.positions.shape[0]
+                return {
+                    "energy": torch.zeros(1, dtype=torch.float64),
+                    "forces": torch.zeros((n, 3), dtype=torch.float64),
+                }
+
+        wrapper = _FairchemD3Calculator(FakeFairchem(), FakeD3(), torch.device("cpu"))
+        return wrapper, calls
+
+    def test_energy_then_forces_evaluates_once(self):
+        """The ASE step order that used to cost two full evaluations."""
+        wrapper, calls = self._wrapper()
+        atoms = METHANE.copy()
+        atoms.info = {"charge": 0, "spin": 1}
+
+        wrapper.get_potential_energy(atoms)
+        wrapper.get_forces(atoms)
+
+        assert calls == {"ml": 1, "d3": 1}
+
+    def test_moving_the_atoms_recomputes(self):
+        """Caching must key on geometry, not on the Atoms object's identity.
+
+        ASE optimizers mutate one Atoms in place, so an identity-keyed cache
+        would return stale forces for every step after the first.
+        """
+        wrapper, calls = self._wrapper()
+        atoms = METHANE.copy()
+        atoms.info = {"charge": 0, "spin": 1}
+
+        wrapper.get_potential_energy(atoms)
+        atoms.positions[0][0] += 0.1
+        wrapper.get_potential_energy(atoms)
+
+        assert calls == {"ml": 2, "d3": 2}
+
+    def test_changing_charge_recomputes(self):
+        """Charge and spin feed the UMA prediction, so they invalidate too."""
+        wrapper, calls = self._wrapper()
+        atoms = METHANE.copy()
+        atoms.info = {"charge": 0, "spin": 1}
+
+        wrapper.get_potential_energy(atoms)
+        atoms.info["charge"] = -1
+        wrapper.get_potential_energy(atoms)
+
+        assert calls == {"ml": 2, "d3": 2}
+
+    def test_calculation_required_tracks_the_cache(self):
+        """ASE consults this before deciding to call calculate()."""
+        wrapper, _ = self._wrapper()
+        atoms = METHANE.copy()
+        atoms.info = {"charge": 0, "spin": 1}
+
+        assert wrapper.calculation_required(atoms, ("energy",)) is True
+        wrapper.get_potential_energy(atoms)
+        assert wrapper.calculation_required(atoms, ("energy",)) is False
+        atoms.positions[0][0] += 0.1
+        assert wrapper.calculation_required(atoms, ("energy",)) is True

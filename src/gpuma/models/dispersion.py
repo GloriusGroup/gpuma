@@ -69,6 +69,24 @@ class _FairchemD3Calculator:
         self._device = device
         self.implemented_properties = ("energy", "forces")
         self.results: dict[str, Any] = {}
+        #: Geometry the values in ``results`` belong to, or ``None`` when there
+        #: is nothing cached. See :meth:`_state_key`.
+        self._results_key: tuple | None = None
+
+    @staticmethod
+    def _state_key(atoms: Any) -> tuple:
+        """Identify the geometry a result belongs to.
+
+        Keyed on the actual positions, species and charge/spin rather than on
+        object identity, because ASE optimizers mutate one ``Atoms`` in place:
+        identity is constant across the whole run and would never invalidate.
+        """
+        return (
+            atoms.get_positions().tobytes(),
+            atoms.get_atomic_numbers().tobytes(),
+            atoms.info.get("charge"),
+            atoms.info.get("spin"),
+        )
 
     def calculate(
         self,
@@ -85,6 +103,14 @@ class _FairchemD3Calculator:
         if target is None:
             raise ValueError("FairchemD3Calculator.calculate requires an Atoms object")
 
+        # An ASE step asks for the energy and then the forces, and both are
+        # produced by the same pass. Without this the geometry was evaluated
+        # twice per step -- two UMA forward passes and two D3 passes -- for
+        # results that are identical by construction.
+        key = self._state_key(target)
+        if key == self._results_key and self.results:
+            return
+
         self._fairchem.calculate(
             atoms=target,
             properties=list(properties),
@@ -100,6 +126,7 @@ class _FairchemD3Calculator:
         f_d3 = d3_out["forces"].detach().cpu().numpy()
 
         self.results = {"energy": e_ml + e_d3, "forces": f_ml + f_d3}
+        self._results_key = key
 
     def get_potential_energy(
         self, atoms: Any = None, force_consistent: bool = False
@@ -121,5 +148,7 @@ class _FairchemD3Calculator:
         return self.results.get(name)
 
     def calculation_required(self, atoms: Any, properties) -> bool:
-        """Always recompute; we don't cache against atoms identity here."""
-        return True
+        """Report whether ``atoms`` differs from what ``results`` was computed for."""
+        if atoms is None or not self.results:
+            return True
+        return self._state_key(atoms) != self._results_key
