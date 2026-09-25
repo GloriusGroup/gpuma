@@ -230,6 +230,8 @@ technical:
 
 > You can also control the GPU with the `CUDA_VISIBLE_DEVICES` environment variable.
 
+Before calibration, torch-sim measures every system's neighbor-list edge count so it can bin-pack batches. torch-sim runs that measurement over the whole submitted batch in one pass, which holds roughly ten kilobytes per atom and overflows a 44 GB card at a few million atoms. GPUMA routes the measurement through chunks sized from the device's free memory, so batch size is bounded by the optimization itself, not by this bookkeeping. The per-system numbers are identical either way, and there is no knob to set.
+
 ---
 
 ## Available Models

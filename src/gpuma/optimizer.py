@@ -404,6 +404,7 @@ def _optimize_batch(
     from torch_sim.autobatching import InFlightAutoBatcher
     from torch_sim.typing import SystemExtras
 
+    from .autobatching import install_chunked_edge_scalers
     from .models import _device_for_torch
 
     logger.info("Starting batch optimization of %d structures", len(structures))
@@ -454,6 +455,10 @@ def _optimize_batch(
     memory_scaling_factor = float(config.technical.memory_scaling_factor)
     max_atoms_to_try = int(config.technical.max_atoms_to_try)
     steps_between_swaps = int(config.technical.steps_between_swaps)
+
+    # torch-sim measures every system's edge count over the whole state at once;
+    # the chunked pass keeps that under the device's free memory.
+    install_chunked_edge_scalers()
 
     # max_atoms_to_try bounds the device probe, not the job: capping it at the
     # job size put the ceiling below the job's own largest structure.
