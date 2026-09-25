@@ -67,7 +67,6 @@ def _load_fairchem_torchsim(config: Config) -> Any:
 
     _load_hf_token_to_env(config)
     model_path = _verify_model_path(config)
-    model_name, model_cache_dir = _verify_model_name_and_cache_dir(config)
     # Fairchem internally only accepts "cuda" or "cpu"; _setup_fairchem_device
     # calls torch.cuda.set_device(N) when a specific GPU is requested so that
     # Fairchem's internal device resolution picks the correct GPU.
@@ -75,8 +74,14 @@ def _load_fairchem_torchsim(config: Config) -> Any:
     torch_device = torch.device(backend_device)
 
     if model_path:
+        # model_name is deliberately not resolved on this branch.
+        # _verify_model_name_and_cache_dir raises when model_name is empty, so
+        # calling it unconditionally rejected a config that supplies only a
+        # local checkpoint -- which _load_fairchem_calculator accepts. The same
+        # config then worked in sequential mode and failed in batch mode.
         uma_model = FairChemModel(model=model_path, task_name="omol", device=torch_device)
     else:
+        model_name, model_cache_dir = _verify_model_name_and_cache_dir(config)
         uma_model = FairChemModel(
             model=model_name,
             model_cache_dir=model_cache_dir,
