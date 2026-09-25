@@ -159,3 +159,149 @@ class TestSequentialVsBatchConsistency:
                 f"Sequential ({s.energy:.4f}) and batch ({b.energy:.4f}) "
                 f"energies differ by more than 1 eV"
             )
+
+
+class TestFailureAlignment:
+    """A structure that fails to optimize must not shift the others.
+
+    A stub calculator stands in for the MLIP: the property under test is how
+    _optimize_sequential handles an exception, and a real model would have to
+    be coaxed into failing on cue to show it.
+    """
+
+    @staticmethod
+    def _flaky_calculator(fail_on_n_atoms):
+        import numpy as np
+
+        class FlakyCalc:
+            def _check(self, atoms):
+                if len(atoms) == fail_on_n_atoms:
+                    raise RuntimeError("simulated failure")
+
+            def get_potential_energy(self, atoms=None, force_consistent=False):
+                self._check(atoms)
+                return 0.0
+
+            def get_forces(self, atoms=None):
+                self._check(atoms)
+                return np.zeros((len(atoms), 3))
+
+            def get_property(self, name, atoms=None, allow_calculation=True):
+                self._check(atoms)
+                return {"energy": 0.0, "forces": np.zeros((len(atoms), 3))}[name]
+
+            def calculation_required(self, atoms, properties):
+                return True
+
+        return FlakyCalc()
+
+    @staticmethod
+    def _chain(n, tag):
+        from gpuma.structure import Structure
+
+        return Structure(
+            symbols=["H"] * n,
+            coordinates=[(i * 1.0, 0.0, 0.0) for i in range(n)],
+            charge=0,
+            multiplicity=1,
+            comment=tag,
+        )
+
+    def test_failure_becomes_none_in_place(self, monkeypatch):
+        """Results stay aligned to inputs, with None marking the failure.
+
+        The old code appended only successes, so [A, B, C_fails, D] came back
+        as [A, B, D] -- and D was then written out labelled as structure 3.
+        """
+        from gpuma import optimizer as opt
+        from gpuma.config import Config
+
+        monkeypatch.setattr(
+            opt, "_get_cached_calculator", lambda config: self._flaky_calculator(10)
+        )
+        config = Config({
+            "optimization": {"batch_optimization_mode": "sequential"},
+            "technical": {"device": "cpu"},
+        })
+        inputs = [
+            self._chain(3, "A"),
+            self._chain(4, "B"),
+            self._chain(10, "C_fails"),
+            self._chain(5, "D"),
+        ]
+
+        results = opt.optimize_structure_batch(inputs, config)
+
+        assert len(results) == len(inputs)
+        assert results[2] is None
+        assert [r.comment for r in results if r is not None] == ["A", "B", "D"]
+        assert results[3].comment == "D"
+
+    def test_all_succeed_has_no_none(self, monkeypatch):
+        """The common path is unchanged."""
+        from gpuma import optimizer as opt
+        from gpuma.config import Config
+
+        monkeypatch.setattr(
+            opt, "_get_cached_calculator", lambda config: self._flaky_calculator(-1)
+        )
+        config = Config({
+            "optimization": {"batch_optimization_mode": "sequential"},
+            "technical": {"device": "cpu"},
+        })
+        inputs = [self._chain(3, "A"), self._chain(4, "B")]
+
+        results = opt.optimize_structure_batch(inputs, config)
+
+        assert [r.comment for r in results] == ["A", "B"]
+
+    def test_summary_counts_only_successes(self, monkeypatch, caplog):
+        """None entries must not be counted as optimized structures."""
+        import logging as _logging
+
+        from gpuma import optimizer as opt
+        from gpuma.config import Config
+
+        monkeypatch.setattr(
+            opt, "_get_cached_calculator", lambda config: self._flaky_calculator(10)
+        )
+        config = Config({
+            "optimization": {"batch_optimization_mode": "sequential"},
+            "technical": {"device": "cpu"},
+        })
+        inputs = [self._chain(3, "A"), self._chain(10, "B_fails")]
+
+        with caplog.at_level(_logging.INFO):
+            opt.optimize_structure_batch(inputs, config)
+
+        assert "Structures output:   1" in caplog.text
+        assert "Success rate:        1/2" in caplog.text
+
+    def test_api_labels_survivors_by_input_position(self, monkeypatch, tmp_path):
+        """The output file must not renumber structures around a failure."""
+        from gpuma import api, optimizer as opt
+        from gpuma.config import Config
+
+        monkeypatch.setattr(
+            opt, "_get_cached_calculator", lambda config: self._flaky_calculator(10)
+        )
+        inputs = [
+            self._chain(3, "A"),
+            self._chain(10, "B_fails"),
+            self._chain(5, "C"),
+        ]
+        monkeypatch.setattr(api, "read_multi_xyz", lambda *a, **kw: inputs)
+        monkeypatch.setattr(api.os.path, "isfile", lambda p: True)
+
+        out = tmp_path / "out.xyz"
+        config = Config({
+            "optimization": {"batch_optimization_mode": "sequential"},
+            "technical": {"device": "cpu"},
+        })
+        api.optimize_batch_multi_xyz_file("in.xyz", str(out), config)
+
+        text = out.read_text()
+        # The third input keeps label 3; it must not inherit the failure's 2.
+        assert "Optimized structure 1 from" in text
+        assert "Optimized structure 3 from" in text
+        assert "Optimized structure 2 from" not in text
