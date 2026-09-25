@@ -48,6 +48,10 @@ INVALID_SMILES = "not_a_smiles"
 #: Keep conformer counts low; these tests check plumbing, not search quality.
 FEW_CONFS = 3
 
+#: Two t-butyls and a methyl: many rotor orientations that are the same
+#: conformer once the molecular graph's automorphisms are allowed.
+ROTOR_RICH = "Cc1ccccc1C(C)(C)C"
+
 #: Its global minimum needs an intramolecular O-H...O=C hydrogen bond. Rotating
 #: that O-H barely moves a heavy atom, so pruning raw embeddings collapsed the
 #: molecule to a single conformer and which rotamer you got was a lottery.
@@ -490,6 +494,116 @@ def test_prune_threshold_is_honoured_end_to_end(cpu_config):
 def test_default_prune_threshold_unchanged():
     """The value is morfeus's; only where it is applied has moved."""
     assert DEFAULT_PRUNE_RMS == 0.35
+
+
+# ---------------------------------------------------------------------------
+# Symmetry-aware pruning
+# ---------------------------------------------------------------------------
+
+
+def _mol_for(smiles: str):
+    """The prepared mol behind ``smiles``, as the backends hand it to the prune."""
+    mol, _ = _prepare(smiles)
+    return mol
+
+
+def test_prune_symmetry_respects_the_heavy_atom_guard():
+    """Methane's pass-through is checked before the metric, so the flag cannot skip it.
+
+    Stripping carbon hydrogens leaves methane a single atom, which every
+    symmetric comparison calls identical -- and would collapse an ensemble the
+    caller cannot rebuild.
+    """
+    coords = [[(0.0, 0.0, 0.0)] * 5 for _ in range(3)]
+    symbols = ["C", "H", "H", "H", "H"]
+
+    kept = _prune_by_rmsd(
+        symbols, coords, 0.35, symmetric=True, mol=_mol_for(METHANE), smiles=METHANE
+    )
+
+    assert kept == [0, 1, 2]
+
+
+def test_prune_symmetry_collapses_rotor_duplicates(cpu_config):
+    """Rotor-equivalent conformers are one basin, so the symmetric metric keeps fewer."""
+    kwargs = {"n_confs": 20, "seed": 42}
+    (blind,) = generate_ensembles([ROTOR_RICH], None, cpu_config, **kwargs)
+    (symmetric,) = generate_ensembles(
+        [ROTOR_RICH], None, cpu_config, prune_symmetry=True, **kwargs
+    )
+
+    assert len(symmetric) < len(blind)
+
+
+def test_prune_symmetry_is_off_by_default(cpu_config):
+    """The flag absent and the flag False must be the same run, geometries included."""
+    kwargs = {"n_confs": 8, "seed": 42}
+    (absent,) = generate_ensembles([BENZOIC_ACID], None, cpu_config, **kwargs)
+    (explicit,) = generate_ensembles(
+        [BENZOIC_ACID], None, cpu_config, prune_symmetry=False, **kwargs
+    )
+
+    assert len(absent) == len(explicit)
+    for one, other in zip(absent, explicit, strict=True):
+        assert one.coordinates == pytest.approx(other.coordinates)
+
+
+def test_prune_symmetry_keeps_the_lowest_energy_conformer_first(cpu_config):
+    """Pruning only ever drops, so the survivor list still starts at the minimum."""
+    kwargs = {"n_confs": 20, "seed": 42}
+    (unpruned,) = generate_ensembles(
+        [ROTOR_RICH], None, cpu_config, prune_rms_thresh=0.0, **kwargs
+    )
+    (symmetric,) = generate_ensembles(
+        [ROTOR_RICH], None, cpu_config, prune_symmetry=True, **kwargs
+    )
+
+    assert symmetric[0].coordinates == pytest.approx(unpruned[0].coordinates)
+
+
+def test_prune_symmetry_survivors_are_a_subsequence_of_the_ensemble(cpu_config):
+    """Energy order is preserved: survivors appear in the unpruned list in order."""
+    kwargs = {"n_confs": 20, "seed": 42}
+    (unpruned,) = generate_ensembles(
+        [SALICYLIC_ACID], None, cpu_config, prune_rms_thresh=0.0, **kwargs
+    )
+    (symmetric,) = generate_ensembles(
+        [SALICYLIC_ACID], None, cpu_config, prune_symmetry=True, **kwargs
+    )
+
+    positions = []
+    for structure in symmetric:
+        positions.append(
+            next(
+                i
+                for i, candidate in enumerate(unpruned)
+                if candidate.coordinates == pytest.approx(structure.coordinates)
+            )
+        )
+    assert positions == sorted(positions)
+
+
+def test_prune_symmetry_falls_back_when_over_budget(cpu_config, monkeypatch):
+    """An unaffordable symmetry group prunes as the default metric, not as nothing."""
+    from gpuma.conformer_generation import rmsd as rmsd_module
+
+    kwargs = {"n_confs": 20, "seed": 42}
+    (blind,) = generate_ensembles([ROTOR_RICH], None, cpu_config, **kwargs)
+    monkeypatch.setattr(rmsd_module, "SYMMETRIC_BUDGET_SECONDS", 0.0)
+    (fallen_back,) = generate_ensembles(
+        [ROTOR_RICH], None, cpu_config, prune_symmetry=True, **kwargs
+    )
+
+    assert len(fallen_back) == len(blind)
+
+
+def test_generate_structures_accepts_prune_symmetry(cpu_config):
+    """The single-structure entry point takes the flag too, and still returns one."""
+    (structure,) = generate_structures(
+        [BENZOIC_ACID], cpu_config, n_confs=8, seed=42, prune_symmetry=True
+    )
+
+    assert isinstance(structure, Structure)
 
 
 # ---------------------------------------------------------------------------
