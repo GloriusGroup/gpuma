@@ -355,6 +355,45 @@ def _optimize_sequential(
     return results
 
 
+def _whole_job_memory_scaler(state: Any, model: Any, batcher: Any) -> float | None:
+    """Return the job's total memory metric if one forward pass over it fits, else None."""
+    import torch
+    from torch_sim import autobatching as ts_ab
+
+    if state.n_atoms > batcher.max_atoms_to_try:
+        return None
+    try:
+        peak_gb = ts_ab.measure_model_memory_forward(state, model)
+    except Exception as exc:
+        if not any(msg in str(exc) for msg in batcher.oom_error_message):
+            raise
+        peak_gb = None
+    finally:
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
+    if peak_gb is None:
+        logger.info("Job does not fit in one forward pass; probing GPU memory")
+        return None
+
+    free, _ = torch.cuda.mem_get_info()
+    budget_gb = (free + torch.cuda.memory_reserved()) / 1024**3
+    if peak_gb > batcher.max_memory_padding * budget_gb:
+        logger.info(
+            "Job peaks at %.2f of %.2f GB, over max_memory_padding; probing GPU memory",
+            peak_gb,
+            budget_gb,
+        )
+        return None
+    logger.info(
+        "Job fits in one batch (%.2f of %.2f GB); skipping memory probe",
+        peak_gb,
+        budget_gb,
+    )
+    return float(sum(ts_ab.calculate_memory_scalers(
+        state, batcher.memory_scales_with, batcher.cutoff
+    )))
+
+
 def _optimize_batch(
     structures: list[Structure],
     config: Config,
@@ -416,14 +455,8 @@ def _optimize_batch(
     max_atoms_to_try = int(config.technical.max_atoms_to_try)
     steps_between_swaps = int(config.technical.steps_between_swaps)
 
-    # max_atoms_to_try bounds the autobatcher's probe for how much fits on the
-    # GPU, so it must describe the *device*, not the job. Passing
-    # min(batched_state.n_atoms, ...) tied the ceiling to the size of whatever
-    # was submitted: a two-structure run probed at most two structures' worth
-    # of memory, and the resulting max_memory_scaler was small enough that
-    # InFlightAutoBatcher rejected any later structure larger than the first
-    # ("State metric=N is greater than max_metric M") or, short of that, packed
-    # one system per batch and threw away the batching entirely.
+    # max_atoms_to_try bounds the device probe, not the job: capping it at the
+    # job size put the ceiling below the job's own largest structure.
     batcher = InFlightAutoBatcher(
         model,
         memory_scales_with="n_edges",
@@ -439,13 +472,11 @@ def _optimize_batch(
         steps_between_swaps,
     )
 
-    # No batcher.load_states() here. torch_sim.optimize calls it itself, on the
-    # OptimState it builds via _chunked_apply -- which carries the optimizer's
-    # own tensors (FIRE velocities, LBFGS history) and so reflects the real
-    # footprint. Loading first is not merely redundant: _get_first_batch skips
-    # the estimate when max_memory_scaler is already set, so a pre-load pinned
-    # the ceiling to a measurement taken on the bare SimState and torch_sim
-    # never re-measured, leaving the batch packed against an underestimate.
+    # A job that fits runs as one batch, so the probe is skipped. Otherwise
+    # torch_sim.optimize probes on the OptimState itself; no load_states() here,
+    # which would pin the ceiling to the bare SimState.
+    with timed_block("Memory estimation"):
+        batcher.max_memory_scaler = _whole_job_memory_scaler(batched_state, model, batcher)
 
     with timed_block("Optimization"):
         final_state = torch_sim.optimize(

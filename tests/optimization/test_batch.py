@@ -305,3 +305,99 @@ class TestFailureAlignment:
         assert "Optimized structure 1 from" in text
         assert "Optimized structure 3 from" in text
         assert "Optimized structure 2 from" not in text
+
+
+@requires_gpu
+class TestAutobatcherMemoryProbe:
+    """A job that fits in one forward pass must skip the replicated-unit probe.
+
+    The probe grows copies of one system until OOM, which costs minutes for
+    UMA; a job that fits needs no ceiling below its own total metric.
+    """
+
+    @staticmethod
+    def _config():
+        return Config({
+            "optimization": {
+                "batch_optimization_mode": "batch",
+                "force_convergence_criterion": 0.5,
+            },
+            "model": {"model_type": "orb", "model_name": "orb_v3_direct_omol"},
+            "technical": {"device": DEVICE, "max_atoms_to_try": 10000},
+        })
+
+    @staticmethod
+    def _count_probes(monkeypatch):
+        import torch_sim.autobatching as ts_ab
+
+        calls = []
+        real = ts_ab.determine_max_batch_size
+
+        def counting(*args, **kwargs):
+            calls.append(args[0].n_atoms)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(ts_ab, "determine_max_batch_size", counting)
+        return calls
+
+    @staticmethod
+    def _largest():
+        import gpuma
+
+        return max(gpuma.read_multi_xyz(str(SMALL_BATCH_XYZ)), key=lambda s: s.n_atoms)
+
+    def test_job_that_fits_skips_probe(self, monkeypatch):
+        import gpuma
+
+        probes = self._count_probes(monkeypatch)
+        structures = gpuma.read_multi_xyz(str(MULTI_XYZ))
+        results = optimize_structure_batch(structures, self._config())
+        assert all(r is not None for r in results)
+        assert probes == []
+
+    def test_single_structure(self, ethanol):
+        """Used to fail: the probe ceiling landed just under the structure's own metric."""
+        results = optimize_structure_batch([ethanol], self._config())
+        assert len(results) == 1 and results[0].energy is not None
+
+    def test_small_then_large(self, methane):
+        """Used to fail: the ceiling was sized from the first, smaller structure."""
+        results = optimize_structure_batch([methane, self._largest()], self._config())
+        assert [r is not None for r in results] == [True, True]
+
+    def _patch_whole_job_forward(self, monkeypatch, jobs, behaviour):
+        import torch_sim.autobatching as ts_ab
+
+        real = ts_ab.measure_model_memory_forward
+        n_atoms = sum(s.n_atoms for s in jobs)
+
+        def patched(state, model):
+            # A prime total never occurs among the probe's replicated copies.
+            if state.n_atoms == n_atoms:
+                return behaviour(state, model, real)
+            return real(state, model)
+
+        monkeypatch.setattr(ts_ab, "measure_model_memory_forward", patched)
+
+    def test_oom_on_whole_job_falls_back_to_probe(self, monkeypatch, methane, ethanol):
+        def oom(state, model, real):
+            raise RuntimeError("CUDA out of memory. Tried to allocate 1 GiB")
+
+        jobs = [methane, ethanol, self._largest()]
+        self._patch_whole_job_forward(monkeypatch, jobs, oom)
+        probes = self._count_probes(monkeypatch)
+        results = optimize_structure_batch(jobs, self._config())
+        assert all(r is not None for r in results)
+        assert probes
+
+    def test_insufficient_headroom_falls_back_to_probe(self, monkeypatch, methane, ethanol):
+        def huge_peak(state, model, real):
+            real(state, model)
+            return 1e6
+
+        jobs = [methane, ethanol, self._largest()]
+        self._patch_whole_job_forward(monkeypatch, jobs, huge_peak)
+        probes = self._count_probes(monkeypatch)
+        results = optimize_structure_batch(jobs, self._config())
+        assert all(r is not None for r in results)
+        assert probes
