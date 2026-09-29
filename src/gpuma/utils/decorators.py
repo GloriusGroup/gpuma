@@ -88,15 +88,12 @@ class TimingCapture:
     inside the GPUMA optimizer) are exposed as attributes:
 
     - ``model_loading``       — ``"Model loading"``
-    - ``memory_estimation``   — ``"Memory estimation"`` (autobatcher probe)
+    - ``memory_estimation``   — ``"Memory estimation"`` (whole-job fit check)
     - ``optimization``        — ``"Optimization"``
     - ``total``               — ``"Total optimization"``
 
-    ``memory_estimation`` reads ``0.0`` on the current batch path. The
-    autobatcher probe now runs inside ``torch_sim.optimize``, where gpuma
-    cannot time it separately, so its cost is included in ``optimization``.
-    The attribute is kept so existing benchmark scripts keep working, and
-    ``overhead`` is correspondingly just ``model_loading`` in practice.
+    A job too large for one batch is probed inside ``torch_sim.optimize``;
+    that probe's cost lands in ``optimization``.
 
     Other ``timed_block`` events are still recorded; access them via
     :meth:`get` or :attr:`raw`. Missing phases default to ``0.0``.
@@ -124,14 +121,7 @@ class TimingCapture:
 
     @property
     def memory_estimation(self) -> float:
-        """Autobatcher probe time; ``0.0`` now that it runs inside torch-sim.
-
-        gpuma used to call ``batcher.load_states()`` itself, which triggered
-        the probe somewhere it could be timed. That pre-load also pinned the
-        memory ceiling to a measurement taken before the optimizer's own
-        tensors existed, so it was removed; the probe moved inside
-        ``torch_sim.optimize`` and its cost now lands in ``optimization``.
-        """
+        """Whole-job fit check time; a fallback probe is counted in ``optimization``."""
         return self.raw.get("Memory estimation", 0.0)
 
     @property
