@@ -244,6 +244,29 @@ def test_technical_to_dict():
     assert d["technical"]["logging_level"] == "INFO"
 
 
+# --- memory_scales_with validation ---
+
+
+def test_memory_scales_with_defaults_to_auto():
+    assert Config().technical.memory_scales_with == "auto"
+
+
+def test_memory_scales_with_is_normalized():
+    cfg = Config({"technical": {"memory_scales_with": " N_Atoms "}})
+    assert cfg.technical.memory_scales_with == "n_atoms"
+
+
+@pytest.mark.parametrize("bad", ["n_atoms_x_density", "edges"])
+def test_memory_scales_with_rejects_unknown(bad):
+    with pytest.raises(ValueError, match="memory_scales_with"):
+        Config({"technical": {"memory_scales_with": bad}})
+
+
+def test_memory_scales_with_empty_falls_back_to_auto():
+    cfg = Config({"technical": {"memory_scales_with": ""}})
+    assert cfg.technical.memory_scales_with == "auto"
+
+
 # --- batch_optimizer validation ---
 
 
