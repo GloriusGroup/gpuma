@@ -55,6 +55,7 @@ Unknown fields are preserved. **Always use a config file for CLI and API calls.*
     "memory_scaling_factor": 1.75,
 
     "max_atoms_to_try": 100000,
+    "memory_scales_with": "auto",
     "steps_between_swaps": 1,
 
     "logging_level": "INFO"
@@ -175,6 +176,7 @@ technical:
   memory_scaling_factor: 1.75
 
   max_atoms_to_try: 100000
+  memory_scales_with: auto
   steps_between_swaps: 1
 
   logging_level: INFO
@@ -225,6 +227,7 @@ technical:
 | `max_memory_padding` | `0.95` | Fraction of GPU memory the autobatcher is allowed to fill during calibration. Lower = more headroom, smaller batches |
 | `memory_scaling_factor` | `1.75` | Factor by which the autobatcher grows the probe size during calibration. Larger = faster calibration but coarser final batch size; smaller = slower but tighter. Must be > 1 |
 | `max_atoms_to_try` | `100000` | Upper bound on the autobatcher's calibration probe size (atoms) |
+| `memory_scales_with` | `"auto"` | Per-structure memory metric for batch sizing: `"n_atoms"`, `"n_edges"` or `"auto"`. `"auto"` uses `n_atoms` for UMA, whose large fixed memory per structure makes edge counts overcharge small molecules, and `n_edges` for ORB and SevenNet |
 | `steps_between_swaps` | `1` | Optimization steps between batch swaps in the in-flight autobatcher. `1` is fastest on this codebase's screenings (uma-s/uma-m/orb); higher values are monotonically slower |
 | `logging_level` | `"INFO"` | Logging verbosity: `"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"` |
 

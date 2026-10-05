@@ -21,7 +21,13 @@ from typing import Any
 from ase import Atoms
 from ase.optimize import BFGS, FIRE, LBFGS
 
-from .config import DEFAULT_CONFIG, Config, load_config_from_file, resolve_model_type
+from .config import (
+    DEFAULT_CONFIG,
+    VALID_MEMORY_SCALES_WITH,
+    Config,
+    load_config_from_file,
+    resolve_model_type,
+)
 from .utils.decorators import timed_block
 from .utils.logging_utils import log_optimization_summary
 from .models import _parse_device_string, load_calculator, load_torchsim_model
@@ -394,6 +400,20 @@ def _whole_job_memory_scaler(state: Any, model: Any, batcher: Any) -> float | No
     )))
 
 
+def _memory_scales_with(config: Config) -> str:
+    """Return the autobatcher memory metric: ``n_atoms`` for UMA, else ``n_edges``, unless set."""
+    choice = str(config.technical.get("memory_scales_with", "auto") or "auto").strip().lower()
+    if choice not in VALID_MEMORY_SCALES_WITH:
+        raise ValueError(
+            f"memory_scales_with must be one of {sorted(VALID_MEMORY_SCALES_WITH)}, "
+            f"got {choice!r}"
+        )
+    if choice != "auto":
+        return choice
+    # UMA's large per-system memory makes edge counts overcharge small molecules.
+    return "n_atoms" if resolve_model_type(config) == "fairchem" else "n_edges"
+
+
 def _optimize_batch(
     structures: list[Structure],
     config: Config,
@@ -462,16 +482,18 @@ def _optimize_batch(
 
     # max_atoms_to_try bounds the device probe, not the job: capping it at the
     # job size put the ceiling below the job's own largest structure.
+    memory_scales_with = _memory_scales_with(config)
     batcher = InFlightAutoBatcher(
         model,
-        memory_scales_with="n_edges",
+        memory_scales_with=memory_scales_with,
         memory_scaling_factor=memory_scaling_factor,
         max_memory_padding=max_memory_padding,
         max_atoms_to_try=max_atoms_to_try,
     )
     logger.debug(
-        "Autobatcher params: memory_scales_with=n_edges, "
+        "Autobatcher params: memory_scales_with=%s, "
         "max_memory_padding=%.2f, max_atoms_to_try=%d, steps_between_swaps=%d",
+        memory_scales_with,
         max_memory_padding,
         max_atoms_to_try,
         steps_between_swaps,

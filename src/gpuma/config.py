@@ -58,6 +58,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "max_memory_padding": 0.95,
         "memory_scaling_factor": 1.75,
         "max_atoms_to_try": 100_000,
+        "memory_scales_with": "auto",
         "steps_between_swaps": 1,
         "logging_level": "INFO",
     },
@@ -92,6 +93,9 @@ VALID_MODEL_TYPES: frozenset[str] = frozenset(_MODEL_TYPE_ALIASES)
 VALID_BATCH_OPTIMIZERS: frozenset[str] = frozenset(
     {"fire", "gradient_descent", "lbfgs", "bfgs"}
 )
+
+# n_atoms_x_density is excluded: it divides by a bounding box, meaningless for molecules.
+VALID_MEMORY_SCALES_WITH: frozenset[str] = frozenset({"auto", "n_atoms", "n_edges"})
 
 
 def resolve_model_type(config: Config | dict[str, Any]) -> str:
@@ -403,6 +407,14 @@ def validate_config(config: Config) -> None:
         raise ValueError("Device string in config cannot be empty")
     if dev != "cpu" and not dev.startswith("cuda"):
         raise ValueError(f"Device must be 'cpu', 'cuda' or 'cuda:N' (e.g. 'cuda:0'), got {dev!r}")
+
+    scales_with = str(getattr(tech, "memory_scales_with", "auto") or "auto").strip().lower()
+    if scales_with not in VALID_MEMORY_SCALES_WITH:
+        raise ValueError(
+            f"memory_scales_with must be one of {sorted(VALID_MEMORY_SCALES_WITH)}, "
+            f"got {scales_with!r}"
+        )
+    tech.memory_scales_with = scales_with
 
     # If CUDA is requested but not available, we don't fail here; the
     # runtime will transparently fall back to CPU via model helpers.
