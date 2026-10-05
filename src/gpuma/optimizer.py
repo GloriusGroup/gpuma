@@ -377,9 +377,11 @@ def _whole_job_memory_scaler(state: Any, model: Any, batcher: Any) -> float | No
 
     free, _ = torch.cuda.mem_get_info()
     budget_gb = (free + torch.cuda.memory_reserved()) / 1024**3
-    if peak_gb > batcher.max_memory_padding * budget_gb:
+    # Keep the probe's margin: its batch sits one growth step below a size that fit.
+    if peak_gb * batcher.memory_scaling_factor > batcher.max_memory_padding * budget_gb:
         logger.info(
-            "Job peaks at %.2f of %.2f GB, over max_memory_padding; probing GPU memory",
+            "Job peaks at %.2f of %.2f GB, too close to the limit for one batch; "
+            "probing GPU memory",
             peak_gb,
             budget_gb,
         )

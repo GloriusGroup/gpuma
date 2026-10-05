@@ -390,6 +390,24 @@ class TestAutobatcherMemoryProbe:
         assert all(r is not None for r in results)
         assert probes
 
+    def test_peak_within_one_growth_step_falls_back_to_probe(
+        self, monkeypatch, methane, ethanol
+    ):
+        """Used to fail: a job at 0.8 of the budget ran as one batch and OOMed mid-run."""
+        import torch
+
+        def near_limit(state, model, real):
+            real(state, model)
+            free, _ = torch.cuda.mem_get_info()
+            return 0.8 * (free + torch.cuda.memory_reserved()) / 1024**3
+
+        jobs = [methane, ethanol, self._largest()]
+        self._patch_whole_job_forward(monkeypatch, jobs, near_limit)
+        probes = self._count_probes(monkeypatch)
+        results = optimize_structure_batch(jobs, self._config())
+        assert all(r is not None for r in results)
+        assert probes
+
     def test_insufficient_headroom_falls_back_to_probe(self, monkeypatch, methane, ethanol):
         def huge_peak(state, model, real):
             real(state, model)
