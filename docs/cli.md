@@ -99,6 +99,10 @@ You can also select SevenNet with the `--model-type` flag
 
 **Note:**
 - If `--config` is not specified, `config.json` in the current directory is loaded by default.
+  If that file does not exist either, GPUMA runs on its built-in defaults and logs a warning
+  naming the default model. A `--config` path that does not exist is an error.
+- Global flags (`--device`, `--model-type`, `--verbose`, `--quiet`) go before the subcommand,
+  e.g. `gpuma --device cuda:1 batch ...`.
 - Direct CLI flags are supported, but using a config file is preferred for all workflows.
 - Unless explicitly overridden, the electronic state defaults are always
   `charge = 0` and `multiplicity = 1`.

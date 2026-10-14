@@ -323,3 +323,42 @@ def test_generate_passes_configured_multiplicity(tmp_path, monkeypatch):
     cli.cmd_generate(args, config)
 
     assert seen["multiplicity"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Config handling: --config on every command, missing files
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("command", [["convert"], ["generate", "--conformers", "2"]])
+def test_convert_and_generate_accept_config(command):
+    from gpuma.cli import setup_parser
+
+    args = setup_parser().parse_args([*command, "--smiles", "C", "-o", "x.xyz", "-c", "c.json"])
+
+    assert args.config == "c.json"
+
+
+def test_missing_explicit_config_is_a_usage_error(tmp_path):
+    with pytest.raises(SystemExit) as exc_info:
+        main(["optimize", "--smiles", "C", "-o", str(tmp_path / "x.xyz"), "-c", "nope.json"])
+    assert exc_info.value.code == 2
+
+
+def test_validate_rejects_a_missing_file(tmp_path):
+    with pytest.raises(SystemExit) as exc_info:
+        main(["config", "--validate", str(tmp_path / "nope.json")])
+    assert exc_info.value.code == 1
+
+
+def test_no_config_anywhere_reports_defaults(tmp_path, monkeypatch):
+    import argparse
+
+    from gpuma.cli import _resolve_config_path, setup_parser
+
+    monkeypatch.chdir(tmp_path)
+    path, using_defaults = _resolve_config_path(argparse.Namespace(config=None), setup_parser())
+    assert (path, using_defaults) == ("config.json", True)
+
+    (tmp_path / "config.json").write_text("{}")
+    assert _resolve_config_path(argparse.Namespace(config=None), setup_parser())[1] is False
