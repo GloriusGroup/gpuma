@@ -69,6 +69,64 @@ def _level_from_string(name: str) -> int:
     return levels.get((name or "").upper(), logging.INFO)
 
 
+def _global_options_parser(defaults: bool = False) -> argparse.ArgumentParser:
+    """Return the options accepted before or after any subcommand.
+
+    Subparsers get ``SUPPRESS`` defaults so they never clobber a value given
+    before the subcommand; the top-level parser carries the real defaults.
+    """
+    parser = argparse.ArgumentParser(add_help=False)
+    flag_default = False if defaults else argparse.SUPPRESS
+    value_default = None if defaults else argparse.SUPPRESS
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        default=flag_default,
+        help="Enable verbose output (overrides config setting)",
+    )
+    parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        default=flag_default,
+        help="Suppress output (overrides config setting)",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=value_default,
+        help=(
+            "Override compute device from config. "
+            "Accepted values: 'cpu', 'cuda', 'cuda:N' (e.g. 'cuda:0')."
+        ),
+    )
+    parser.add_argument(
+        "--model-type",
+        type=str,
+        default=value_default,
+        choices=["fairchem", "uma", "orb", "orb-v3", "sevennet", "7net"],
+        help=(
+            "Override model backend from config. "
+            "'fairchem'/'uma' for Fairchem UMA models, 'orb'/'orb-v3' for ORB-v3 models, "
+            "'sevennet'/'7net' for SevenNet models."
+        ),
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        default=flag_default,
+        help="Print a single JSON summary to stdout; logs go to stderr",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=flag_default,
+        help="Validate inputs, config and device without loading a model",
+    )
+    return parser
+
+
 def setup_parser() -> argparse.ArgumentParser:
     """Set up the command line argument parser for GPUMA.
 
@@ -80,6 +138,7 @@ def setup_parser() -> argparse.ArgumentParser:
 
     """
     parser = argparse.ArgumentParser(
+        parents=[_global_options_parser(defaults=True)],
         description=(
             "GPUMA - Optimize molecular structures using Fairchem UMA, ORB-v3 or SevenNet models"
         ),
@@ -112,10 +171,12 @@ UTILITY COMMANDS:
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    common = [_global_options_parser()]
 
     # Single structure optimization
     optimize_parser = subparsers.add_parser(
         "optimize",
+        parents=common,
         help="Optimize a single molecular structure",
         description=("Optimize a single molecular structure from a SMILES string or an XYZ file."),
     )
@@ -133,14 +194,14 @@ UTILITY COMMANDS:
     optimize_parser.add_argument(
         "--charge",
         type=int,
-        default=0,
-        help="Total charge for XYZ input (ignored for SMILES). Default: 0",
+        default=None,
+        help="Total charge for XYZ input (ignored for SMILES). Default: from config",
     )
     optimize_parser.add_argument(
         "--multiplicity",
         type=int,
-        default=1,
-        help=("Spin multiplicity for XYZ input (ignored for SMILES). Default: 1"),
+        default=None,
+        help="Spin multiplicity for XYZ input (ignored for SMILES). Default: from config",
     )
     optimize_parser.add_argument(
         "--output",
@@ -159,6 +220,7 @@ UTILITY COMMANDS:
     # 'smiles' alias for single-structure optimization from SMILES only
     smiles_parser = subparsers.add_parser(
         "smiles",
+        parents=common,
         help="Optimize a single structure from a SMILES string",
         description=("Shorthand for optimizing a single structure directly from a SMILES string."),
     )
@@ -185,6 +247,7 @@ UTILITY COMMANDS:
     # Ensemble optimization (conformers of same molecule from SMILES)
     ensemble_parser = subparsers.add_parser(
         "ensemble",
+        parents=common,
         help="Optimize conformer ensemble from SMILES using batch inference",
         description=(
             "Optimize multiple conformers of the same molecule generated from "
@@ -220,6 +283,7 @@ UTILITY COMMANDS:
     # Batch optimization (structures from files)
     batch_parser = subparsers.add_parser(
         "batch",
+        parents=common,
         help="Optimize multiple structures from multi-XYZ file or directory",
         description=(
             "Optimize multiple structures using batch inference from a "
@@ -240,14 +304,14 @@ UTILITY COMMANDS:
     batch_parser.add_argument(
         "--charge",
         type=int,
-        default=0,
-        help="Total charge for XYZ inputs. Default: 0",
+        default=None,
+        help="Total charge for XYZ inputs. Default: from config",
     )
     batch_parser.add_argument(
         "--multiplicity",
         type=int,
-        default=1,
-        help="Spin multiplicity for XYZ inputs. Default: 1",
+        default=None,
+        help="Spin multiplicity for XYZ inputs. Default: from config",
     )
     batch_parser.add_argument(
         "--output",
@@ -266,6 +330,7 @@ UTILITY COMMANDS:
     # SMILES to XYZ conversion (utility)
     convert_parser = subparsers.add_parser(
         "convert",
+        parents=common,
         help="Convert SMILES to 3D coordinates (no optimization)",
         description="Convert SMILES strings to XYZ format with 3D coordinates.",
     )
@@ -292,6 +357,7 @@ UTILITY COMMANDS:
     # Conformer generation (utility)
     generate_parser = subparsers.add_parser(
         "generate",
+        parents=common,
         help="Generate conformer ensemble from SMILES (no optimization)",
         description="Generate multiple conformers from SMILES without optimization.",
     )
@@ -324,6 +390,7 @@ UTILITY COMMANDS:
     # Configuration management
     config_parser = subparsers.add_parser(
         "config",
+        parents=common,
         help="Configuration file management",
         description="Create default configuration files or validate existing ones.",
     )
@@ -337,38 +404,6 @@ UTILITY COMMANDS:
         "--validate",
         type=str,
         help="Validate existing configuration file",
-    )
-
-    # Global options
-    parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Enable verbose output (overrides config setting)",
-    )
-    parser.add_argument(
-        "--quiet",
-        "-q",
-        action="store_true",
-        help="Suppress output (overrides config setting)",
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        help=(
-            "Override compute device from config. "
-            "Accepted values: 'cpu', 'cuda', 'cuda:N' (e.g. 'cuda:0')."
-        ),
-    )
-    parser.add_argument(
-        "--model-type",
-        type=str,
-        choices=["fairchem", "uma", "orb", "orb-v3", "sevennet", "7net"],
-        help=(
-            "Override model backend from config. "
-            "'fairchem'/'uma' for Fairchem UMA models, 'orb'/'orb-v3' for ORB-v3 models, "
-            "'sevennet'/'7net' for SevenNet models."
-        ),
     )
 
     return parser

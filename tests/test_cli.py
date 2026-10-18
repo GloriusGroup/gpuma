@@ -362,3 +362,67 @@ def test_no_config_anywhere_reports_defaults(tmp_path, monkeypatch):
 
     (tmp_path / "config.json").write_text("{}")
     assert _resolve_config_path(argparse.Namespace(config=None), setup_parser())[1] is False
+
+
+# ---------------------------------------------------------------------------
+# Global flags in any position; charge/multiplicity from config
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--device", "cpu", "batch", "--multi-xyz", "a.xyz", "-o", "o.xyz"],
+        ["batch", "--multi-xyz", "a.xyz", "-o", "o.xyz", "--device", "cpu"],
+    ],
+)
+def test_global_flags_before_or_after_subcommand(argv):
+    from gpuma.cli import setup_parser
+
+    assert setup_parser().parse_args(argv).device == "cpu"
+
+
+def test_subcommand_position_wins():
+    from gpuma.cli import setup_parser
+
+    args = setup_parser().parse_args(
+        ["--device", "cpu", "batch", "--multi-xyz", "a", "-o", "o", "--device", "cuda:1"]
+    )
+    assert args.device == "cuda:1"
+
+
+def test_flag_before_subcommand_survives_parent_default():
+    from gpuma.cli import setup_parser
+
+    args = setup_parser().parse_args(["-v", "--json", "convert", "--smiles", "C", "-o", "o"])
+    assert args.verbose is True and args.json is True
+
+
+def _record_batch_config(monkeypatch):
+    import gpuma.cli as cli
+    from gpuma.structure import Structure
+
+    seen = {}
+
+    def fake_batch(input_file, output_file=None, config=None):
+        seen["charge"] = config.optimization.charge
+        seen["multiplicity"] = config.optimization.multiplicity
+        return [Structure(symbols=["He"], coordinates=[(0.0, 0.0, 0.0)], charge=0, multiplicity=1)]
+
+    monkeypatch.setattr(cli, "optimize_batch_multi_xyz_file", fake_batch)
+    return seen
+
+
+def test_batch_uses_config_charge_when_flag_omitted(tmp_path, monkeypatch):
+    seen = _record_batch_config(monkeypatch)
+    cfg = _write_orb_config(tmp_path, charge=-1, multiplicity=2)
+    main(["batch", "--multi-xyz", str(MULTI_XYZ), "-o", str(tmp_path / "o.xyz"), "-c", cfg])
+    assert (seen["charge"], seen["multiplicity"]) == (-1, 2)
+
+
+def test_batch_charge_flag_overrides_config(tmp_path, monkeypatch):
+    seen = _record_batch_config(monkeypatch)
+    cfg = _write_orb_config(tmp_path, charge=-1, multiplicity=2)
+    main(["batch", "--multi-xyz", str(MULTI_XYZ), "-o", str(tmp_path / "o.xyz"), "-c", cfg,
+          "--charge", "1"])
+    assert (seen["charge"], seen["multiplicity"]) == (1, 2)
