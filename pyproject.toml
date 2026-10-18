@@ -29,6 +29,7 @@ dependencies = [
   "pyyaml==6.0.3",
   "orb-models==0.6.1",
   "nvalchemi-toolkit-ops==0.4.0",
+  "warp-lang==1.17.0",
   "sevenn[torchsim]==0.13.0",
   "nvmolkit==0.5.1"
 ]
