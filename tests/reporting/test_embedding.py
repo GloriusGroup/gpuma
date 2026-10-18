@@ -59,7 +59,7 @@ def setup_embed(modules, monkeypatch, *, zero=False, sort_error=False, field="MM
 def test_embedding_observes_before_sort_and_preserves_slots_and_calls(
     modules, monkeypatch, capsys, caplog
 ):
-    r = modules("reporting")
+    r = modules("utils.reporting")
     embed, config, calls = setup_embed(modules, monkeypatch)
     outputs = []
     logs = []
@@ -127,7 +127,7 @@ def test_embedding_observes_before_sort_and_preserves_slots_and_calls(
 def test_generation_count_survives_zero_or_sort_exception(
     modules, monkeypatch, zero, sort_error, expected
 ):
-    r = modules("reporting")
+    r = modules("utils.reporting")
     embed, config, _ = setup_embed(
         modules, monkeypatch, zero=zero, sort_error=sort_error, field=None
     )
@@ -144,7 +144,7 @@ def test_generation_count_survives_zero_or_sort_exception(
 
 
 def test_gpu_retry_has_distinct_attempt_and_preserves_exception(modules, monkeypatch):
-    r = modules("reporting")
+    r = modules("utils.reporting")
     embed, config, calls = setup_embed(modules, monkeypatch)
     config.technical.device = "cuda"
     error = RuntimeError("original CUDA failure")
@@ -169,7 +169,7 @@ def test_gpu_retry_has_distinct_attempt_and_preserves_exception(modules, monkeyp
 
 
 def test_gpu_host_mode_counts_ids_fields_and_order(modules, monkeypatch):
-    r = modules("reporting")
+    r = modules("utils.reporting")
     embed = modules("conformer_generation.embed")
     calls = []
 
@@ -247,7 +247,7 @@ def test_gpu_host_mode_counts_ids_fields_and_order(modules, monkeypatch):
 
 
 def test_observer_baseexception_never_changes_fallback_or_return(modules, monkeypatch):
-    r = modules("reporting")
+    r = modules("utils.reporting")
     embed, config, calls = setup_embed(modules, monkeypatch)
 
     def observer(event):
@@ -262,7 +262,7 @@ def test_observer_baseexception_never_changes_fallback_or_return(modules, monkey
 
 
 def test_prepare_exception_keeps_original_error_and_input_identity(modules, monkeypatch):
-    r = modules("reporting")
+    r = modules("utils.reporting")
     embed, config, _ = setup_embed(modules, monkeypatch)
     error = ValueError("private molecule text")
 

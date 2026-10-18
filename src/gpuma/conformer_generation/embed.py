@@ -37,8 +37,8 @@ import logging
 from math import isfinite
 from typing import TYPE_CHECKING
 
-from .. import reporting as _reporting
 from ..structure import Structure
+from ..utils import reporting as _reporting
 
 if TYPE_CHECKING:  # pragma: no cover - annotation only, avoids importing torch
     from ..config import Config

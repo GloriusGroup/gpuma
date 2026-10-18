@@ -21,7 +21,6 @@ from typing import Any
 from ase import Atoms
 from ase.optimize import BFGS, FIRE, LBFGS
 
-from . import reporting as _reporting
 from .config import (
     DEFAULT_CONFIG,
     VALID_MEMORY_SCALES_WITH,
@@ -31,6 +30,7 @@ from .config import (
 )
 from .models import _parse_device_string, load_calculator, load_torchsim_model
 from .structure import Structure
+from .utils import reporting as _reporting
 from .utils.decorators import timed_block
 from .utils.logging_utils import log_optimization_summary
 

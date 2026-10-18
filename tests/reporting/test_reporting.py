@@ -23,7 +23,7 @@ def _operation(reporting):
 
 
 def test_reports_isolate_nested_observers_and_transport(modules):
-    r = modules("reporting")
+    r = modules("utils.reporting")
     seen = []
 
     def observer(event):
@@ -52,7 +52,7 @@ def test_reports_isolate_nested_observers_and_transport(modules):
 
 
 def test_criterion_observer_copies_mask_and_preserves_identity(modules):
-    r = modules("reporting")
+    r = modules("utils.reporting")
 
     class Tensor:
         def __init__(self, values):
@@ -99,7 +99,7 @@ def test_criterion_observer_copies_mask_and_preserves_identity(modules):
 
 
 def test_criterion_exception_is_original_and_unknown_version_is_honest(modules):
-    r = modules("reporting")
+    r = modules("utils.reporting")
     error = ValueError("original")
 
     def fail(*args):
@@ -129,7 +129,7 @@ def _worker_snapshot(connection, path):
 
 
 def test_spawn_transport_merges_once_and_keeps_worker_provenance(modules):
-    r = modules("reporting")
+    r = modules("utils.reporting")
     ctx = multiprocessing.get_context("spawn")
     receiver, sender = ctx.Pipe(duplex=False)
     process = ctx.Process(target=_worker_snapshot, args=(sender, str(Path(r.__file__))))
@@ -159,7 +159,7 @@ def test_spawn_transport_merges_once_and_keeps_worker_provenance(modules):
 
 
 def test_inherited_report_never_notifies_parent_and_copy_failure_is_isolated(modules, monkeypatch):
-    r = modules("reporting")
+    r = modules("utils.reporting")
     seen = []
     with r.diagnostic_report(seen.append) as report:
         monkeypatch.setattr(r.os, "getpid", lambda: report._pid + 1)
@@ -180,19 +180,22 @@ def test_import_sandbox_restores_cached_modules_and_parent_attributes(monkeypatc
     from .conftest import isolated_modules
 
     parent = types.ModuleType("gpuma")
-    original = types.ModuleType("gpuma.reporting")
-    parent.reporting = original
+    utils = types.ModuleType("gpuma.utils")
+    original = types.ModuleType("gpuma.utils.reporting")
+    utils.reporting = original
+    parent.utils = utils
     morfeus = types.ModuleType("morfeus")
     morfeus.conformer = object()
     saved = morfeus.conformer
     monkeypatch.setitem(sys.modules, "gpuma", parent)
-    monkeypatch.setitem(sys.modules, "gpuma.reporting", original)
+    monkeypatch.setitem(sys.modules, "gpuma.utils", utils)
+    monkeypatch.setitem(sys.modules, "gpuma.utils.reporting", original)
     monkeypatch.setitem(sys.modules, "morfeus", morfeus)
     with isolated_modules() as load:
-        assert load("reporting") is not original
+        assert load("utils.reporting") is not original
         morfeus.conformer = object()
         morfeus.new_child = object()
-    assert sys.modules["gpuma.reporting"] is parent.reporting is original
+    assert sys.modules["gpuma.utils.reporting"] is parent.utils.reporting is original
     assert morfeus.conformer is saved
     assert not hasattr(morfeus, "new_child")
 
@@ -200,7 +203,7 @@ def test_import_sandbox_restores_cached_modules_and_parent_attributes(monkeypatc
 def test_later_capture_failure_invalidates_stale_convergence(modules):
     from .test_optimizer import Tensor
 
-    r = modules("reporting")
+    r = modules("utils.reporting")
     batcher = types.SimpleNamespace(current_idx=[0])
     with r.diagnostic_report() as report:
         with _operation(r):
@@ -241,7 +244,7 @@ def test_later_capture_failure_invalidates_stale_convergence(modules):
     ],
 )
 def test_merge_rejects_malformed_schema_atomically_then_accepts_valid_retry(modules, path, bad):
-    r = modules("reporting")
+    r = modules("utils.reporting")
     with r.diagnostic_report() as child:
         with _operation(r):
             r._emit("mlip_optimize", "criterion_result", input_index=0, converged=False)
@@ -282,7 +285,7 @@ def test_merge_rejects_malformed_schema_atomically_then_accepts_valid_retry(modu
 def test_untrusted_attribution_clears_all_prior_evidence(modules, indices, values):
     from .test_optimizer import Tensor
 
-    r = modules("reporting")
+    r = modules("utils.reporting")
     batcher = types.SimpleNamespace(current_idx=[0, 1])
     with r.diagnostic_report() as report:
         with _operation(r):
@@ -309,7 +312,7 @@ def test_untrusted_attribution_clears_all_prior_evidence(modules, indices, value
 def test_valid_index_copy_failure_preserves_other_inputs(modules):
     from .test_optimizer import Tensor
 
-    r = modules("reporting")
+    r = modules("utils.reporting")
     batcher = types.SimpleNamespace(current_idx=[0, 1])
     with r.diagnostic_report() as report:
         with _operation(r):

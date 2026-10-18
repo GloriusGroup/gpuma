@@ -105,7 +105,7 @@ def setup_optimizer(modules, monkeypatch, converged=False):
 
 @pytest.mark.parametrize("converged", [True, False])
 def test_ase_bool_none_slots_and_science_calls_unchanged(modules, monkeypatch, capsys, converged):
-    r = modules("reporting")
+    r = modules("utils.reporting")
     optimizer, Structure, config, calls, _ = setup_optimizer(modules, monkeypatch, converged)
     outputs, observations = [], []
     for enabled in (False, True):
@@ -140,7 +140,7 @@ def test_ase_bool_none_slots_and_science_calls_unchanged(modules, monkeypatch, c
 def test_torchsim_actual_callback_attribution_and_budget_mutation(
     modules, monkeypatch, energy, failure
 ):
-    r = modules("reporting")
+    r = modules("utils.reporting")
     optimizer, Structure, config, calls, Atoms = setup_optimizer(modules, monkeypatch)
     config.technical.device = "cuda"
     if energy:

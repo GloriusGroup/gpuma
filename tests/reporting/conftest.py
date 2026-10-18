@@ -25,6 +25,10 @@ def isolated_modules():
     child.__path__ = [str(root / "conformer_generation")]
     sys.modules[child.__name__] = child
     package.conformer_generation = child
+    utils = types.ModuleType("gpuma.utils")
+    utils.__path__ = [str(root / "utils")]
+    sys.modules[utils.__name__] = utils
+    package.utils = utils
     try:
         yield lambda name: importlib.import_module("gpuma." + name)
     finally:
