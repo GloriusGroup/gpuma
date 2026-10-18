@@ -28,10 +28,11 @@ from .config import (
     load_config_from_file,
     resolve_model_type,
 )
-from .utils.decorators import timed_block
-from .utils.logging_utils import log_optimization_summary
 from .models import _parse_device_string, load_calculator, load_torchsim_model
 from .structure import Structure
+from .utils import reporting as _reporting
+from .utils.decorators import timed_block
+from .utils.logging_utils import log_optimization_summary
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +186,7 @@ def _resolve_ase_optimizer(config: Config) -> tuple[type, str]:
 # ---------------------------------------------------------------------------
 
 
+@_reporting._instrument("mlip_optimize", "ase", share=True)
 def optimize_single_structure(
     structure: Structure,
     config: Config | None = None,
@@ -237,17 +239,21 @@ def optimize_single_structure(
             opt_name,
         )
         optimizer = opt_cls(atoms, logfile=None)
-        optimizer.run(fmax=fmax)
-        logger.info("Optimization completed after %d steps", optimizer.get_number_of_steps())
+        converged = optimizer.run(fmax=fmax)
+        steps = optimizer.get_number_of_steps()
+        logger.info("Optimization completed after %d steps", steps)
+        _reporting._ase_result(converged, steps, opt_name, fmax)
 
         structure.coordinates = atoms.get_positions().tolist()
         structure.energy = float(atoms.get_potential_energy())
+        _reporting._ase_returned()
         return structure
 
     except Exception as exc:  # pragma: no cover - defensive logging
         raise RuntimeError(f"Optimization failed: {exc}") from exc
 
 
+@_reporting._instrument("mlip_optimize")
 def optimize_structure_batch(
     structures: list[Structure],
     config: Config | None = None,
@@ -348,7 +354,8 @@ def _optimize_sequential(
     n_ok = 0
     for i, struct in enumerate(structures):
         try:
-            results[i] = optimize_single_structure(struct, config, calculator)
+            with _reporting._input(i):
+                results[i] = optimize_single_structure(struct, config, calculator)
             n_ok += 1
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.warning("Structure %d optimization failed: %s", i + 1, exc)
@@ -416,6 +423,7 @@ def _memory_scales_with(config: Config) -> str:
     return "n_atoms" if resolve_model_type(config) == "fairchem" else "n_edges"
 
 
+@_reporting._instrument("mlip_optimize", "torchsim")
 def _optimize_batch(
     structures: list[Structure],
     config: Config,
@@ -508,13 +516,26 @@ def _optimize_batch(
         batcher.max_memory_scaler = _whole_job_memory_scaler(batched_state, model, batcher)
 
     with timed_block("Optimization"):
-        final_state = torch_sim.optimize(
-            system=batched_state,
-            model=model,
-            optimizer=optimizer,
-            convergence_fn=convergence_fn,
-            autobatcher=batcher,
-            steps_between_swaps=steps_between_swaps,
+        observation = _reporting._observe_criterion(batcher, len(structures), convergence_fn)
+        observer = None
+        if observation is not None:
+            observer, convergence_fn = observation
+        try:
+            final_state = torch_sim.optimize(
+                system=batched_state,
+                model=model,
+                optimizer=optimizer,
+                convergence_fn=convergence_fn,
+                autobatcher=batcher,
+                steps_between_swaps=steps_between_swaps,
+            )
+        except BaseException:
+            _reporting._finish_criterion(
+                observer, False, config, optimizer_name, _DEFAULT_FORCE_CRITERION
+            )
+            raise
+        _reporting._finish_criterion(
+            observer, True, config, optimizer_name, _DEFAULT_FORCE_CRITERION
         )
 
     # Extract results
@@ -534,4 +555,6 @@ def _optimize_batch(
             comment=f"Optimized with model {model_name} in batch mode",
         )
         results.append(struct)
+        _reporting._emit("mlip_optimize", "optimization_returned", input_index=i,
+                         output_index=i, optimized=True)
     return results
