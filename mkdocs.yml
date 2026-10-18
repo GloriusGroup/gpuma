@@ -24,11 +24,23 @@ nav:
   - Installation: install.md
   - Configuration: config.md
   - Command Line Interface: cli.md
+  - Using with AI agents: agents.md
   - Python API: reference.md
   - License: LICENSE.md
 
 plugins:
   - search
+  - llmstxt:
+      full_output: llms-full.txt
+      markdown_description: GPU geometry optimization of molecules with machine-learned interatomic potentials (UMA, ORB-v3, SevenNet), driven by the gpuma CLI.
+      sections:
+        Getting started:
+          - index.md
+          - install.md
+          - agents.md
+        Usage:
+          - cli.md
+          - config.md
   - mkdocstrings:
       handlers:
         python:

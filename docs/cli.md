@@ -101,8 +101,9 @@ You can also select SevenNet with the `--model-type` flag
 - If `--config` is not specified, `config.json` in the current directory is loaded by default.
   If that file does not exist either, GPUMA runs on its built-in defaults and logs a warning
   naming the default model. A `--config` path that does not exist is an error.
-- Global flags (`--device`, `--model-type`, `--verbose`, `--quiet`) go before the subcommand,
-  e.g. `gpuma --device cuda:1 batch ...`.
+- Global flags (`--device`, `--model-type`, `--verbose`, `--quiet`, `--json`, `--dry-run`)
+  work before or after the subcommand; if given in both places, the one after the subcommand
+  wins.
 - Direct CLI flags are supported, but using a config file is preferred for all workflows.
 - Unless explicitly overridden, the electronic state defaults are always
   `charge = 0` and `multiplicity = 1`.
@@ -115,7 +116,7 @@ You can also select SevenNet with the `--model-type` flag
 - For **XYZ inputs** (single and batch), both charge and multiplicity can be
   set via CLI flags (`--charge`, `--multiplicity`) or via the config
   (`optimization.charge`, `optimization.multiplicity`). CLI flags override the
-  config values. These values are passed down to the models as
+  config values; without the flags, the config values are used. These values are passed down to the models as
   `Atoms.info = {"charge": charge, "spin": multiplicity}` and are written to
   the XYZ comments as `Charge: ... | Multiplicity: ...`.
 
@@ -127,7 +128,8 @@ See [Configuration](config.md) for details.
 
 You can control the compute device globally in the config or from the CLI with `--device` (which overrides the config).
 Accepted values are `cpu`, `cuda` (default GPU), or `cuda:N` to select a specific GPU (e.g. `cuda:0`, `cuda:1`).
-If the requested GPU index does not exist, GPUMA falls back to `cuda:0` with a warning.
+A GPU index that does not exist, or a CUDA device on a machine without usable CUDA, is an
+error (exit code 3); GPUMA never silently switches to another GPU or to the CPU.
 
 ```bash
 # use GPU 1 explicitly
@@ -141,3 +143,66 @@ Alternatively, you can use the `CUDA_VISIBLE_DEVICES` environment variable to co
 ```bash
 CUDA_VISIBLE_DEVICES=1 gpuma optimize --smiles "C=C" --output output.xyz --config examples/config.json
 ```
+
+## Machine-readable output and exit codes
+
+Add `--json` to any command to get exactly one JSON object on stdout; all log
+output goes to stderr. This is meant for scripts and AI agents:
+
+```bash
+gpuma batch --multi-xyz in.xyz --output out.xyz --config config.json --json > summary.json
+```
+
+The summary contains:
+
+| Key | Content |
+| --- | --- |
+| `status` | `ok`, `partial`, `error` or `dry_run` |
+| `exit_code` | The process exit code (see below) |
+| `command`, `output_file` | What ran and where results were written |
+| `device`, `model`, `config` | The resolved device, the model, and the full config (Hugging Face token masked) |
+| `n_input`, `n_returned` | Number of input structures and of returned structures |
+| `structures` | Per returned structure: `index`, `n_atoms`, `charge`, `multiplicity`, `energy_ev`, `comment` |
+| `diagnostics` | The engine diagnostic report (embedding and optimization events, convergence where known) |
+| `error` | `{"type", "message"}` when the command failed, else `null` |
+| `wall_time_s`, `gpuma_version`, `schema_version` | Run metadata |
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | Success |
+| `1` | Runtime failure (for example an optimization crashed) |
+| `2` | Command-line usage error |
+| `3` | Invalid input, config value or device |
+| `4` | Partial batch: some structures failed to optimize |
+
+## Checking before running
+
+`--dry-run` (for `optimize`, `smiles`, `ensemble` and `batch`) validates the
+inputs, the config and the device without loading a model, and reports the
+number of input structures:
+
+```bash
+gpuma batch --multi-xyz in.xyz --output out.xyz --config config.json --dry-run
+```
+
+`gpuma config --show --config config.json` prints the configuration that will
+actually be used, after `--config` and global overrides such as `--device`.
+`gpuma config --schema` prints the JSON Schema of the config file, with every
+key's type, default and allowed values.
+
+## Environment checks
+
+`gpuma doctor` checks the environment without loading a model: CUDA, the free
+memory of each GPU, the configured device, the Hugging Face token (for UMA
+models), the model cache and the installed agent skill. It prints the GPU with
+the most free memory as the recommended device and exits with 1 if any check
+fails.
+
+```bash
+gpuma doctor --config config.json
+```
+
+## Agent skill
+
+`gpuma skills install` installs the GPUMA skill for AI coding agents; see
+[Using GPUMA with AI agents](agents.md).
