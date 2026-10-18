@@ -2,7 +2,10 @@
 
 `gpuma config --schema` is the authoritative list of keys, types, defaults and
 allowed values; this file says which values to pick. Unknown keys are kept but
-ignored. A misspelled value of a known key is an error (exit code 3).
+ignored. Misspelled values of `model.model_type`, `model.model_name`,
+`optimization.batch_optimizer`, `technical.memory_scales_with` and
+`technical.device` are errors (exit code 3), reported by `--dry-run` and before
+every run.
 
 ## Models
 

@@ -50,11 +50,14 @@ no job scheduler.
 
    ```bash
    nohup gpuma batch --multi-xyz in.xyz -o out.xyz -c config.json --json > summary.json 2> run.log &
+   echo $!
    ```
 
-   Check progress with `tail -n 5 run.log`; the run is finished once
-   `summary.json` is non-empty. Never start a second gpuma run on the same GPU
-   while one is running.
+   Note the process ID that `echo $!` prints and check progress with
+   `tail -n 5 run.log`. The run has finished once `kill -0 <pid>` fails. Then
+   read `summary.json`; if it is empty, the process died before writing it
+   (killed, out of memory, or a command-line error), and `run.log` says why.
+   Never start a second gpuma run on the same GPU while one is running.
 6. **Report back** from `summary.json`: `status`, `n_input` and `n_returned`,
    `structures[].energy_ev`, and anything unusual in `diagnostics`. Energies are
    in eV (1 eV = 96.485 kJ/mol = 23.061 kcal/mol). For conformers, report

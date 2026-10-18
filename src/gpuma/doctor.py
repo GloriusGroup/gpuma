@@ -195,7 +195,10 @@ def _check_hf_token(config: Config) -> Check | None:
         "hf_token",
         "fail",
         "UMA models need a Hugging Face token; none found",
-        hint="Set model.huggingface_token_file, or use model_type orb, which needs no token.",
+        hint=(
+            "Set model.huggingface_token_file, or use model_type orb with model_name "
+            "orb_v3_direct_omol, which needs no token."
+        ),
     )
 
 

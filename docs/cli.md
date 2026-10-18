@@ -129,7 +129,8 @@ See [Configuration](config.md) for details.
 You can control the compute device globally in the config or from the CLI with `--device` (which overrides the config).
 Accepted values are `cpu`, `cuda` (default GPU), or `cuda:N` to select a specific GPU (e.g. `cuda:0`, `cuda:1`).
 A GPU index that does not exist, or a CUDA device on a machine without usable CUDA, is an
-error (exit code 3); GPUMA never silently switches to another GPU or to the CPU.
+error (exit code 3); optimization never silently switches to another GPU or to the CPU.
+Conformer generation alone may still fall back to the CPU, with a warning.
 
 ```bash
 # use GPU 1 explicitly
@@ -172,7 +173,7 @@ The summary contains:
 | `0` | Success |
 | `1` | Runtime failure (for example an optimization crashed) |
 | `2` | Command-line usage error |
-| `3` | Invalid input, config value or device |
+| `3` | Invalid input, config value, model name or device, as detected by GPUMA's own checks |
 | `4` | Partial batch: some structures failed to optimize |
 
 ## Checking before running

@@ -178,3 +178,74 @@ def test_dry_run_on_convert_is_usage_error():
     with pytest.raises(SystemExit) as exc_info:
         main(["convert", "--smiles", "C", "-o", "o.xyz", "--dry-run"])
     assert exc_info.value.code == 2
+
+
+# ---------------------------------------------------------------------------
+# Review fixes
+# ---------------------------------------------------------------------------
+
+
+def test_stdout_to_stderr_flushes_dunder_and_libc():
+    import os
+    import subprocess
+    import sys
+    import textwrap
+    from pathlib import Path
+
+    script = textwrap.dedent(
+        """
+        import ctypes, sys
+        from gpuma.cli_report import stdout_to_stderr
+        with stdout_to_stderr():
+            sys.__stdout__.write("NOISE_DUNDER\\n")
+            ctypes.CDLL(None).printf(b"NOISE_LIBC\\n")
+        print('{"ok": true}')
+        """
+    )
+    src = str(Path(__file__).resolve().parent.parent / "src")
+    env = {**os.environ, "PYTHONPATH": src, "CUDA_VISIBLE_DEVICES": ""}
+    out = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, env=env, timeout=300
+    )
+    assert out.stdout == '{"ok": true}\n'
+    assert "NOISE_DUNDER" in out.stderr and "NOISE_LIBC" in out.stderr
+
+
+def test_optimize_unusable_device_exit_3(tmp_path, monkeypatch, capsys):
+    import torch
+
+    def wrapped_failure(**kwargs):
+        raise RuntimeError("Optimization failed: CUDA is not available")
+
+    monkeypatch.setattr(cli, "optimize_single_smiles", wrapped_failure)
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    argv = ["optimize", "--smiles", "CCO", "-o", "o.xyz", "-c", _write_config(tmp_path),
+            "--device", "cuda", "--json"]
+    assert main(argv) == 3
+    assert json.loads(capsys.readouterr().out)["error"]["type"] == "ValueError"
+
+
+def test_dry_run_unknown_model_name_exit_3(tmp_path, monkeypatch, capsys):
+    _forbid_api(monkeypatch)
+    cfg = tmp_path / "c.json"
+    cfg.write_text(json.dumps({"technical": {"device": "cpu"}}))
+    argv = ["optimize", "--smiles", "CCO", "-o", "o.xyz", "-c", str(cfg), "--model-type", "orb",
+            "--dry-run", "--json"]
+    assert main(argv) == 3
+    message = json.loads(capsys.readouterr().out)["error"]["message"]
+    assert "uma-s-1p2" in message and "orb_v3_direct_omol" in message
+
+
+def test_library_value_error_is_runtime_failure(tmp_path, monkeypatch, capsys):
+    _fake_batch(monkeypatch, 1, effect=lambda: int("not a number"))
+    assert main(_batch_argv(tmp_path, "--json")) == 1
+    assert json.loads(capsys.readouterr().out)["error"]["type"] == "ValueError"
+
+
+def test_gpuma_value_error_is_invalid_input():
+    from gpuma.cli_report import exit_code_for
+    from gpuma.models.device import _parse_device_string
+
+    with pytest.raises(ValueError) as exc_info:
+        _parse_device_string("tpu")
+    assert exit_code_for(exc_info.value) == 3

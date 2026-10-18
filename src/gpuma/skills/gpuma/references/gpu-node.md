@@ -11,8 +11,9 @@ choose.
   `--device cuda:N` on the command.
 - `nvidia-smi` shows which processes, including other users' jobs, are on each
   GPU. Avoid a GPU on which someone else's large job is running.
-- A device that does not exist, or CUDA that is not usable, is an error
-  (exit code 3), never a silent switch to another GPU or to the CPU.
+- For optimization, a device that does not exist, or CUDA that is not usable,
+  is an error (exit code 3), never a silent switch to another GPU or to the
+  CPU. Conformer generation alone may fall back to the CPU, with a warning.
 
 ## GPU memory
 
@@ -44,10 +45,11 @@ to a directory with more space. Later runs load from the cache.
 ## Long runs
 
 - Shell commands you run time out after a few minutes. Start long runs with
-  `nohup ... --json > summary.json 2> run.log &`, note the process ID, and poll
-  with `tail -n 5 run.log`.
-- The run has finished when `summary.json` is non-empty. To stop a run, use
-  `kill <pid>`.
+  `nohup ... --json > summary.json 2> run.log &`, note the process ID (`echo $!`),
+  and poll with `tail -n 5 run.log`.
+- The run has finished once `kill -0 <pid>` fails. An empty `summary.json` then
+  means the process died before writing it; `run.log` says why. To stop a run,
+  use `kill <pid>`.
 - Every process pays a fixed start-up cost: loading the model, and for ORB
   compiling it (about half a minute). For a tiny job, setting
   `TORCHDYNAMO_DISABLE=1` in the environment skips the compile.

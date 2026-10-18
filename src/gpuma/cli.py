@@ -48,6 +48,7 @@ from .cli_report import (
 from .config import Config, load_config_from_file, resolve_model_type, save_config_to_file
 from .config_schema import config_json_schema
 from .doctor import recommended_device, run_checks
+from .models.base import AVAILABLE_SEVENNET_MODELS
 from .models.device import _parse_device_string
 from .utils.io_handler import (
     read_multi_xyz,
@@ -531,6 +532,7 @@ def cmd_optimize(args, config: Config) -> CommandResult:
     )
     if args.dry_run:
         return _dry_run_result("optimize", args, config)
+    _check_inputs(args, config)
     if args.smiles:
         logger.info(
             "Converting SMILES '%s' to 3D coordinates and optimizing (multiplicity=%d)...",
@@ -578,6 +580,7 @@ def cmd_ensemble(args, config: Config) -> CommandResult:
     """
     if args.dry_run:
         return _dry_run_result("ensemble", args, config)
+    _check_inputs(args, config)
     num_conf = _resolve_conformer_count(args, config)
     logger.info("Generating %d conformers for SMILES: %s", num_conf, args.smiles)
     config.conformer_generation.max_num_conformers = num_conf
@@ -616,9 +619,42 @@ def _check_smiles(smiles: str) -> None:
         raise ValueError(f"Invalid SMILES: {smiles!r}")
 
 
+_DEFAULT_MODEL_NAMES = {
+    "fairchem": "uma-s-1p2",
+    "orb": "orb_v3_direct_omol",
+    "sevennet": "7net-omni",
+}
+
+
+def _known_model_names(model_type: str) -> set[str]:
+    """Return the model names the backend can load by name."""
+    if model_type == "orb":
+        from orb_models.forcefield import pretrained
+
+        return {name for name in dir(pretrained) if not name.startswith("_")}
+    if model_type == "fairchem":
+        from fairchem.core import pretrained_mlip
+
+        return set(pretrained_mlip.available_models)
+    return set(AVAILABLE_SEVENNET_MODELS)
+
+
+def _check_model(config: Config) -> None:
+    """Reject a model name the configured backend cannot load (unless a checkpoint is given)."""
+    model_type = resolve_model_type(config)
+    if config.model.model_path:
+        return
+    name = config.model.model_name
+    if name not in _known_model_names(model_type):
+        raise ValueError(
+            f"Unknown {model_type} model_name {name!r}; for model_type {model_type!r} "
+            f"use e.g. {_DEFAULT_MODEL_NAMES[model_type]!r}."
+        )
+
+
 def _check_inputs(args, config: Config) -> int:
-    """Validate inputs, model type and device without loading a model; return ``n_input``."""
-    resolve_model_type(config)
+    """Validate inputs, model and device without loading a model; return ``n_input``."""
+    _check_model(config)
     _parse_device_string(str(config.technical.device))
     charge = int(config.optimization.charge)
     multiplicity = int(config.optimization.multiplicity)

@@ -27,6 +27,7 @@ def two_gpus(monkeypatch):
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(torch.cuda, "device_count", lambda: 2)
     monkeypatch.setattr(doctor, "_gpu_memory", lambda: GPUS)
+    _fake_warp(monkeypatch, 2)
 
 
 @pytest.fixture
@@ -56,7 +57,7 @@ def test_no_cuda_with_cpu_device_is_warn(no_cuda):
 def test_uma_without_token_is_fail(two_gpus, no_token):
     config = Config({"model": {"model_type": "fairchem"}, "technical": {"device": "cuda:1"}})
     check = _by_name(run_checks(config))["hf_token"]
-    assert check.status == "fail" and "orb" in check.hint
+    assert check.status == "fail" and "orb_v3_direct_omol" in check.hint
 
 
 def test_uma_with_env_token_is_ok(two_gpus, no_token, monkeypatch):

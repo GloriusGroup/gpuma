@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import os
 import sys
+import traceback
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
@@ -20,6 +22,8 @@ EXIT_INVALID_INPUT = 3
 EXIT_PARTIAL = 4
 
 SUMMARY_SCHEMA_VERSION = 1
+
+_PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__)) + os.sep
 
 
 @dataclass
@@ -64,11 +68,15 @@ def redacted_config(config: Config) -> dict[str, Any]:
     return data
 
 
+def _raised_by_gpuma(exc: BaseException) -> bool:
+    frames = traceback.extract_tb(exc.__traceback__)
+    return not frames or os.path.abspath(frames[-1].filename).startswith(_PACKAGE_DIR)
+
+
 def exit_code_for(exc: BaseException) -> int:
-    """Map an exception to the CLI exit code."""
-    if isinstance(exc, (ValueError, FileNotFoundError, FileExistsError)):
-        return EXIT_INVALID_INPUT
-    return EXIT_FAILURE
+    """Map an exception to the CLI exit code; only gpuma's own input checks give 3."""
+    invalid = isinstance(exc, (ValueError, FileNotFoundError, FileExistsError))
+    return EXIT_INVALID_INPUT if invalid and _raised_by_gpuma(exc) else EXIT_FAILURE
 
 
 def _resolved_device(config: Config) -> str:
@@ -124,6 +132,12 @@ def stdout_to_stderr():
         with contextlib.redirect_stdout(sys.stderr):
             yield
     finally:
+        # Drain Python and libc buffers while fd 1 still points at stderr.
+        for stream in (sys.stdout, sys.__stdout__):
+            if stream is not None:
+                stream.flush()
+        with contextlib.suppress(OSError, AttributeError):
+            ctypes.CDLL(None).fflush(None)
         if saved_fd is not None:
             os.dup2(saved_fd, 1)
             os.close(saved_fd)
