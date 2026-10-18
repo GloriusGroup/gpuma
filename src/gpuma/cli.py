@@ -24,6 +24,7 @@ import sys
 import time
 import warnings
 
+from .agent_skills import install_skill
 from .api import (
     optimize_batch_multi_xyz_file,
     optimize_batch_xyz_directory,
@@ -443,6 +444,34 @@ UTILITY COMMANDS:
         help="Configuration file for --show (default: config.json if exists)",
     )
 
+    # Agent skill installation
+    skills_parser = subparsers.add_parser(
+        "skills",
+        parents=common,
+        help="Install the gpuma skill for AI coding agents",
+        description=(
+            "Install the gpuma Agent Skill into ~/.claude/skills (Claude Code) and "
+            "~/.agents/skills (Codex, Gemini CLI, Copilot, Cursor)."
+        ),
+    )
+    skills_actions = skills_parser.add_subparsers(dest="skills_action", required=True)
+    install_parser = skills_actions.add_parser(
+        "install",
+        parents=common,
+        help="Install or update the skill",
+        description="Copy the skill shipped with this gpuma version into the agents' folders.",
+    )
+    install_parser.add_argument(
+        "--target",
+        action="append",
+        help="Skills folder to install into (repeatable; default: the two user folders)",
+    )
+    install_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace a gpuma skill folder that was not installed by gpuma",
+    )
+
     return parser
 
 
@@ -775,6 +804,14 @@ def _resolve_config_path(args, parser: argparse.ArgumentParser) -> tuple[str, bo
     return "config.json", not os.path.exists("config.json")
 
 
+def cmd_skills(args, config: Config | None) -> CommandResult:
+    """Handle installation of the agent skill."""
+    installed = install_skill(args.target, force=args.force)
+    for path in installed:
+        logger.info("Installed gpuma skill to %s", path)
+    return CommandResult("skills", "ok", EXIT_OK, extra={"installed": [str(p) for p in installed]})
+
+
 _HANDLERS = {
     "optimize": cmd_optimize,
     "smiles": cmd_optimize,
@@ -783,7 +820,11 @@ _HANDLERS = {
     "convert": cmd_convert,
     "generate": cmd_generate,
     "config": cmd_config,
+    "skills": cmd_skills,
 }
+
+# Commands that never read a config file, so a broken ./config.json cannot block them.
+_NO_CONFIG_COMMANDS = ("skills",)
 
 
 def _load_config(args, parser: argparse.ArgumentParser) -> Config:
@@ -822,7 +863,10 @@ def _execute(args, parser: argparse.ArgumentParser) -> tuple[CommandResult, Conf
     """Load the config and run the command, turning exceptions into results."""
     config = None
     try:
-        config = _load_config(args, parser)
+        if args.command in _NO_CONFIG_COMMANDS:
+            configure_logging(logging.DEBUG if args.verbose else logging.INFO)
+        else:
+            config = _load_config(args, parser)
         return _HANDLERS[args.command](args, config), config
     except Exception as exc:
         return _error_result(args.command, exc), config

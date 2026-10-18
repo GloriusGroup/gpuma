@@ -3,6 +3,7 @@ include README.md
 include pyproject.toml
 
 recursive-include examples *.py *.json *.xyz
+recursive-include src/gpuma/skills *.md
 
 # Exclude large, gitignored benchmark datasets and generated output that the
 # recursive-include above would otherwise sweep into the sdist.

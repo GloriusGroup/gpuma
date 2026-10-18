@@ -63,6 +63,9 @@ package-dir = {"" = "src"}
 where = ["src"]
 include = ["gpuma*"]
 
+[tool.setuptools.package-data]
+gpuma = ["skills/gpuma/*.md", "skills/gpuma/references/*.md"]
+
 [tool.uv]
 [[tool.uv.index]]
 name = "pytorch-cu126"

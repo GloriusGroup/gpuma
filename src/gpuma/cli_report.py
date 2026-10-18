@@ -36,7 +36,8 @@ class CommandResult:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
-def _gpuma_version() -> str | None:
+def gpuma_version() -> str | None:
+    """Return the installed gpuma version, or ``None`` when not installed."""
     try:
         return version("gpuma")
     except PackageNotFoundError:
@@ -65,7 +66,7 @@ def redacted_config(config: Config) -> dict[str, Any]:
 
 def exit_code_for(exc: BaseException) -> int:
     """Map an exception to the CLI exit code."""
-    if isinstance(exc, (ValueError, FileNotFoundError)):
+    if isinstance(exc, (ValueError, FileNotFoundError, FileExistsError)):
         return EXIT_INVALID_INPUT
     return EXIT_FAILURE
 
@@ -87,7 +88,7 @@ def build_summary(
     """Return the single JSON object printed by ``--json``."""
     summary = {
         "schema_version": SUMMARY_SCHEMA_VERSION,
-        "gpuma_version": _gpuma_version(),
+        "gpuma_version": gpuma_version(),
         "command": result.command,
         "status": result.status,
         "exit_code": result.exit_code,
