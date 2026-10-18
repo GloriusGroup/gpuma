@@ -38,10 +38,12 @@ from .cli_report import (
     CommandResult,
     build_summary,
     exit_code_for,
+    redacted_config,
     stdout_to_stderr,
     structure_record,
 )
 from .config import Config, load_config_from_file, save_config_to_file
+from .config_schema import config_json_schema
 from .utils.io_handler import (
     read_multi_xyz,
     read_xyz_directory,
@@ -407,7 +409,9 @@ UTILITY COMMANDS:
         "config",
         parents=common,
         help="Configuration file management",
-        description="Create default configuration files or validate existing ones.",
+        description=(
+            "Create, validate or show configuration files, or print the config JSON Schema."
+        ),
     )
     config_group = config_parser.add_mutually_exclusive_group(required=True)
     config_group.add_argument(
@@ -419,6 +423,22 @@ UTILITY COMMANDS:
         "--validate",
         type=str,
         help="Validate existing configuration file",
+    )
+    config_group.add_argument(
+        "--show",
+        action="store_true",
+        help="Print the resolved configuration (after --config and overrides) as JSON",
+    )
+    config_group.add_argument(
+        "--schema",
+        action="store_true",
+        help="Print the JSON Schema of the configuration file",
+    )
+    config_parser.add_argument(
+        "--config",
+        "-c",
+        type=str,
+        help="Configuration file for --show (default: config.json if exists)",
     )
 
     return parser
@@ -663,6 +683,13 @@ def cmd_generate(args, config: Config) -> CommandResult:
 
 def cmd_config(args, config: Config) -> CommandResult:
     """Handle configuration file management commands."""
+    if args.show or args.schema:
+        # With --json the summary carries the config; the schema goes in "schema".
+        data = redacted_config(config) if args.show else config_json_schema()
+        if not args.json:
+            print(json.dumps(data, indent=2))
+        extra = {"schema": data} if args.schema else {}
+        return CommandResult("config", "ok", EXIT_OK, extra=extra)
     if args.create:
         logger.info("Creating default configuration file at %s", args.create)
         save_config_to_file(config, args.create)
