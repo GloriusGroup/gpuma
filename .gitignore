@@ -145,9 +145,7 @@ examples/screening_results/
 /examples/example_input_xyzs/kraken_library/
 
 uv.lock
-# Local Claude Code state stays out; shared skills are tracked.
-/.claude/*
-!/.claude/skills/
+/.claude/
 
 # Local-only benchmark scripts (kept out of the repo per request)
 /examples/example_ensemble_optimization_kraken.py
