@@ -191,7 +191,7 @@ technical:
 | Parameter | Default | Description |
 |---|---|---|
 | `batch_optimization_mode` | `"batch"` | `"sequential"` (ASE per structure) or `"batch"` (torch-sim GPU-accelerated) |
-| `batch_optimizer` | `"fire"` | Optimizer for both single and batch modes: `"fire"`, `"gradient_descent"`, `"lbfgs"`, or `"bfgs"`. In single-structure (ASE) mode, maps to ASE FIRE/BFGS/LBFGS (`"gradient_descent"` falls back to FIRE). Defaults to `"fire"` if invalid or unset |
+| `batch_optimizer` | `"fire"` | Optimizer for both single and batch modes: `"fire"`, `"gradient_descent"`, `"lbfgs"`, or `"bfgs"`. In single-structure (ASE) mode, maps to ASE FIRE/BFGS/LBFGS (`"gradient_descent"` falls back to FIRE). Defaults to `"fire"` if unset; an unknown value is an error |
 | `charge` | `0` | Total charge of the system (inferred from SMILES, not overridden) |
 | `multiplicity` | `1` | Spin multiplicity of the system |
 | `force_convergence_criterion` | `5e-2` | Force convergence threshold (eV/A). Used for both single and batch modes |
@@ -223,7 +223,7 @@ technical:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `device` | `"cuda"` | `"cpu"`, `"cuda"`, or `"cuda:N"` (e.g. `"cuda:0"`). Falls back to `cuda:0` if the requested index doesn't exist |
+| `device` | `"cuda"` | `"cpu"`, `"cuda"`, or `"cuda:N"` (e.g. `"cuda:0"`). A GPU index that doesn't exist, or CUDA without a usable GPU, is an error |
 | `max_memory_padding` | `0.95` | Fraction of GPU memory the autobatcher is allowed to fill during calibration. Lower = more headroom, smaller batches |
 | `memory_scaling_factor` | `1.75` | Factor by which the autobatcher grows the probe size during calibration. Larger = faster calibration but coarser final batch size; smaller = slower but tighter. A job runs as one batch without probing only if its forward-pass peak times this factor fits in `max_memory_padding` of free memory. Must be > 1 |
 | `max_atoms_to_try` | `100000` | Upper bound on the autobatcher's calibration probe size (atoms) |

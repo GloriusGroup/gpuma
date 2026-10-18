@@ -138,16 +138,15 @@ class TestGpuDevicePlacement:
         torch.cuda.set_device(0)
 
     @requires_gpu
-    def test_invalid_gpu_fallback(self, caplog):
-        """Invalid GPU index falls back to cuda:0 with a warning."""
+    def test_invalid_gpu_raises(self):
+        """Invalid GPU index is an error instead of a silent cuda:0."""
         bad_index = torch.cuda.device_count() + 5
         config = Config({
             "model": {"model_type": "orb", "model_name": "orb_v3_direct_omol"},
             "technical": {"device": f"cuda:{bad_index}"},
         })
-        calc = load_calculator(config)
-        assert calc is not None
-        assert "Falling back to cuda:0" in caplog.text
+        with pytest.raises(ValueError, match="GPU"):
+            load_calculator(config)
 
 
 class TestModelRegistries:

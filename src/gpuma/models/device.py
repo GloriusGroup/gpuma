@@ -18,58 +18,36 @@ logger = logging.getLogger(__name__)
 def _parse_device_string(device: str) -> str:
     """Normalize a device string to ``"cpu"`` or ``"cuda[:N]"``.
 
-    Falls back to ``"cpu"`` when CUDA is requested but unavailable.
-    When a specific GPU index is requested but does not exist, falls
-    back to ``"cuda:0"`` with a warning.
+    Raises :class:`ValueError` for unknown devices, for CUDA without a usable
+    GPU and for a GPU index that does not exist.
     """
     dev = (device or "").strip().lower()
     if dev == "cpu":
         return "cpu"
-    if dev.startswith("cuda"):
-        if not torch.cuda.is_available():
-            logger.warning(
-                "CUDA device requested (%s) but CUDA is not available; falling back to 'cpu'.",
-                device,
-            )
-            return "cpu"
-        # Validate GPU index if specified
-        if ":" in dev:
-            try:
-                idx = int(dev.split(":")[1])
-            except (ValueError, IndexError):
-                logger.warning(
-                    "Invalid CUDA device index in '%s'; using default GPU.",
-                    device,
-                )
-                return "cuda"
-            num_gpus = torch.cuda.device_count()
-            if idx >= num_gpus:
-                logger.warning(
-                    "Requested GPU %d (via '%s') but only %d GPU(s) available. "
-                    "Falling back to cuda:0.",
-                    idx,
-                    device,
-                    num_gpus,
-                )
-                return "cuda:0"
+    if not dev.startswith("cuda"):
+        raise ValueError(f"Unknown device {device!r}; use 'cpu', 'cuda' or 'cuda:N'.")
+    if not torch.cuda.is_available():
+        raise ValueError(
+            f"CUDA device requested ({device!r}) but CUDA is not available; "
+            "run on a GPU node or set device to 'cpu'."
+        )
+    if dev == "cuda":
         return dev
-    logger.warning("Unknown device '%s'; falling back to 'cpu'.", device)
-    return "cpu"
+    _, _, index = dev.partition(":")
+    if not index.isdigit():
+        raise ValueError(f"Invalid CUDA device {device!r}; use 'cuda' or 'cuda:N'.")
+    num_gpus = torch.cuda.device_count()
+    if int(index) >= num_gpus:
+        raise ValueError(
+            f"Requested GPU {device!r} but only {num_gpus} GPU(s) are visible "
+            f"(cuda:0 to cuda:{num_gpus - 1})."
+        )
+    return dev
 
 
 def _device_for_torch(device: str) -> torch.device:
-    """Convert a config device string to a :class:`torch.device`.
-
-    Any invalid or unavailable CUDA specification falls back to CPU.
-    """
-    normalized = _parse_device_string(device)
-    if normalized == "cpu":
-        return torch.device("cpu")
-    try:
-        return torch.device(normalized)
-    except (RuntimeError, ValueError):
-        logger.warning("Invalid CUDA device '%s'; falling back to 'cpu'.", device)
-        return torch.device("cpu")
+    """Convert a config device string to a :class:`torch.device`."""
+    return torch.device(_parse_device_string(device))
 
 
 def _setup_fairchem_device(device: str) -> str:

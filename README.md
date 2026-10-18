@@ -120,6 +120,7 @@ For local browsing of the Markdown sources, see in particular:
 - [docs/index.md](docs/index.md) – overview and getting started
 - [docs/install.md](docs/install.md) – installation details
 - [docs/cli.md](docs/cli.md) – CLI options and input formats
+- [docs/agents.md](docs/agents.md) – using GPUMA with AI agents
 - [docs/config.md](docs/config.md) – configuration file schema and examples
 - [docs/reference.md](docs/reference.md) – API and configuration reference
 
@@ -135,6 +136,13 @@ Also check the [examples/](examples) folder in the repository for sample config 
 
 > **Required for UMA models:**</br>
 > To access the UMA models on Hugging Face, **you must provide a token** either via the `HUGGINGFACE_TOKEN` environment variable or via the config (direct token string or path to a file containing the token).
+
+## Using with AI agents
+
+GPUMA ships a skill for AI coding agents (Claude Code, Codex, Gemini CLI, Copilot, Cursor), so
+chemists can run it in plain language without writing Python. Install it with
+`gpuma skills install` and check the machine with `gpuma doctor`; see
+[docs/agents.md](docs/agents.md).
 
 ## CLI Usage
 

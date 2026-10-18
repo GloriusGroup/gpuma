@@ -30,27 +30,35 @@ class TestParseDeviceString:
         """'cuda:0' is accepted as-is."""
         assert _parse_device_string("cuda:0") == "cuda:0"
 
-    @requires_gpu
-    def test_cuda_invalid_index_fallback(self):
-        """Out-of-range GPU index falls back to 'cuda:0'."""
-        bad_index = torch.cuda.device_count() + 5
-        assert _parse_device_string(f"cuda:{bad_index}") == "cuda:0"
+    def test_missing_gpu_index_raises(self, monkeypatch):
+        """An index beyond the visible GPUs is an error, not a silent cuda:0."""
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 2)
+        with pytest.raises(ValueError, match=r"cuda:5.*2 GPU"):
+            _parse_device_string("cuda:5")
 
-    def test_cuda_no_gpu_fallback(self):
-        """CUDA requested without GPU falls back to 'cpu'."""
-        if torch.cuda.is_available():
-            pytest.skip("Test only runs without GPU")
-        assert _parse_device_string("cuda") == "cpu"
+    def test_cuda_requested_without_cuda_raises(self, monkeypatch):
+        """CUDA requested without a usable GPU is an error, not a silent CPU run."""
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+        with pytest.raises(ValueError, match="CUDA is not available"):
+            _parse_device_string("cuda")
 
-    def test_unknown_device(self):
-        """Unknown device strings fall back to 'cpu'."""
-        assert _parse_device_string("tpu") == "cpu"
-        assert _parse_device_string("") == "cpu"
+    def test_cpu_default_config_still_resolves(self, monkeypatch):
+        """The CPU default keeps working on machines without CUDA."""
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+        assert _parse_device_string("cpu") == "cpu"
 
-    @requires_gpu
-    def test_cuda_non_integer_index(self):
-        """Non-integer CUDA index falls back to plain 'cuda'."""
-        assert _parse_device_string("cuda:abc") == "cuda"
+    @pytest.mark.parametrize("device", ["tpu", ""])
+    def test_unknown_device_raises(self, device):
+        """Unknown device strings are an error."""
+        with pytest.raises(ValueError, match="Unknown device"):
+            _parse_device_string(device)
+
+    def test_non_integer_index_raises(self, monkeypatch):
+        """A non-integer CUDA index is an error."""
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        with pytest.raises(ValueError, match="cuda:abc"):
+            _parse_device_string("cuda:abc")
 
 
 class TestDeviceForTorch:

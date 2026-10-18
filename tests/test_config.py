@@ -288,10 +288,10 @@ def test_batch_optimizer_default_is_fire():
     assert cfg.optimization.batch_optimizer == "fire"
 
 
-def test_batch_optimizer_invalid_defaults_to_fire():
-    """Invalid optimizer name silently defaults to 'fire'."""
-    cfg = Config({"optimization": {"batch_optimizer": "invalid_optimizer"}})
-    assert cfg.optimization.batch_optimizer == "fire"
+def test_batch_optimizer_invalid_raises():
+    """A misspelled optimizer is an error instead of a silent 'fire'."""
+    with pytest.raises(ValueError, match="Unknown batch_optimizer 'lbgfs'"):
+        Config({"optimization": {"batch_optimizer": "lbgfs"}})
 
 
 def test_batch_optimizer_none_defaults_to_fire():

@@ -29,6 +29,7 @@ dependencies = [
   "pyyaml==6.0.3",
   "orb-models==0.6.1",
   "nvalchemi-toolkit-ops==0.4.0",
+  "warp-lang==1.17.0",
   "sevenn[torchsim]==0.13.0",
   "nvmolkit==0.5.1"
 ]
@@ -42,7 +43,8 @@ dev = [
     "ruff>=0.14.14",
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.1",
-    "mkdocstrings[python]>=1.0.2"
+    "mkdocstrings[python]>=1.0.2",
+    "mkdocs-llmstxt>=0.3.0"
 ]
 
 [project.urls]
@@ -62,6 +64,9 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["gpuma*"]
+
+[tool.setuptools.package-data]
+gpuma = ["skills/gpuma/*.md", "skills/gpuma/references/*.md"]
 
 [tool.uv]
 [[tool.uv.index]]
