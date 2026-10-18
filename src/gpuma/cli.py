@@ -18,6 +18,7 @@ The ``--model-type`` CLI flag can override it for any backend
 
 import argparse
 import logging
+import os
 import sys
 import warnings
 
@@ -281,6 +282,12 @@ UTILITY COMMANDS:
         required=True,
         help="Output XYZ file path",
     )
+    convert_parser.add_argument(
+        "--config",
+        "-c",
+        type=str,
+        help="Configuration file path (default: config.json if exists)",
+    )
 
     # Conformer generation (utility)
     generate_parser = subparsers.add_parser(
@@ -306,6 +313,12 @@ UTILITY COMMANDS:
         type=str,
         required=True,
         help="Output multi-XYZ file path for conformer ensemble",
+    )
+    generate_parser.add_argument(
+        "--config",
+        "-c",
+        type=str,
+        help="Configuration file path (default: config.json if exists)",
     )
 
     # Configuration management
@@ -565,6 +578,9 @@ def cmd_config(args, config: Config) -> None:
         save_config_to_file(config, args.create)
         logger.info("Configuration file created")
     elif args.validate:
+        if not os.path.exists(args.validate):
+            logger.error("Configuration file not found: %s", args.validate)
+            sys.exit(1)
         logger.info("Validating configuration file at %s", args.validate)
         _ = load_config_from_file(args.validate)
         logger.info("Configuration file is valid")
@@ -590,6 +606,20 @@ def _apply_model_type_override(config: Config, model_type) -> None:
         config.model.model_type = model_type
 
 
+def _resolve_config_path(args, parser: argparse.ArgumentParser) -> tuple[str, bool]:
+    """Return the config path to load and whether built-in defaults stand in for it.
+
+    An explicit ``--config`` that does not exist is a usage error, so a typo
+    cannot silently swap in the default model.
+    """
+    explicit = getattr(args, "config", None)
+    if explicit is not None:
+        if not os.path.exists(explicit):
+            parser.error(f"config file not found: {explicit}")
+        return explicit, False
+    return "config.json", not os.path.exists("config.json")
+
+
 def main(argv=None) -> int:
     """Entry point for the ``gpuma`` CLI.
 
@@ -608,8 +638,7 @@ def main(argv=None) -> int:
     parser = setup_parser()
     args = parser.parse_args(argv)
 
-    # Load configuration from file if specified, otherwise try default
-    cfg_path = getattr(args, "config", None) or "config.json"
+    cfg_path, using_defaults = _resolve_config_path(args, parser)
     config = load_config_from_file(cfg_path)
 
     # Apply verbosity, device, and model-type flags
@@ -624,6 +653,14 @@ def main(argv=None) -> int:
     if not args.command:
         parser.print_help()
         return 1
+
+    if using_defaults and args.command != "config":
+        logger.warning(
+            "No --config given and no config.json in the working directory; "
+            "using built-in defaults (model %s / %s).",
+            config.model.model_type,
+            config.model.model_name,
+        )
 
     if args.command in ("optimize", "smiles"):
         cmd_optimize(args, config)
