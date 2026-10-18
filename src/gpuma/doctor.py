@@ -148,6 +148,28 @@ def _check_gpus(device: str | None) -> Check | None:
     return Check("gpus", "ok", detail, data={"gpus": gpus})
 
 
+def _check_warp() -> Check | None:
+    """Warp runs the neighbor lists of batch optimization; it needs its own CUDA support."""
+    if not torch.cuda.is_available():
+        return None
+    try:
+        import warp
+    except ImportError:
+        return None
+    n_cuda = warp.get_cuda_device_count()
+    if n_cuda:
+        return Check("warp", "ok", f"warp {warp.__version__} sees {n_cuda} GPU(s)")
+    return Check(
+        "warp",
+        "fail",
+        f"warp {warp.__version__} sees no GPU although torch does",
+        hint=(
+            "This warp-lang build needs a newer NVIDIA driver than the installed one; "
+            "install a warp-lang version built for this driver's CUDA version."
+        ),
+    )
+
+
 def _check_device(config: Config) -> tuple[Check, str | None]:
     raw = str(config.technical.device)
     try:
@@ -216,6 +238,7 @@ def run_checks(config: Config) -> list[Check]:
         _check_versions(),
         _check_cuda(wants_cuda),
         _check_gpus(resolved),
+        _check_warp(),
         device_check,
         _check_hf_token(config),
         _check_model_cache(config),

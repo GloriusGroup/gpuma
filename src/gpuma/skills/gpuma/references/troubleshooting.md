@@ -15,6 +15,7 @@ read the end of the log (stderr).
 | Exit 2, `config file not found` | Wrong `-c` path | Fix the path |
 | Warning `No --config given` | No config file, so the defaults (UMA) are used | Always pass `-c config.json` |
 | Hugging Face authentication or "gated repo" error | UMA without a token, or license not accepted | See gpu-node.md, or use ORB |
+| Exit 1 with an `IndexError` inside `warp`, or `gpuma doctor` reports `warp` FAIL | The installed warp-lang build needs a newer NVIDIA driver | Tell the user; the environment needs a warp-lang version built for the installed driver |
 | CUDA out of memory, "Failed to allocate" | GPU too full or shared | Lower `technical.max_memory_padding` to `0.8`; pick a freer GPU |
 | `model_modal` error with SevenNet | Multi-modal checkpoint | Set `model.model_modal` |
 | Energies of ions or radicals look wrong | Charge or multiplicity not set for XYZ input | Set `--charge` and `--multiplicity` |

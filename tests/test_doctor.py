@@ -113,3 +113,30 @@ def test_doctor_ok_exit_0(two_gpus, tmp_path, capsys, monkeypatch):
 def test_check_is_frozen():
     with pytest.raises(AttributeError):
         Check("a", "ok", "d").status = "fail"
+
+
+def _fake_warp(monkeypatch, n_cuda):
+    import sys
+    import types
+
+    fake = types.SimpleNamespace(__version__="9.9", get_cuda_device_count=lambda: n_cuda)
+    monkeypatch.setitem(sys.modules, "warp", types.ModuleType("warp"))
+    monkeypatch.setattr(sys.modules["warp"], "__version__", fake.__version__, raising=False)
+    monkeypatch.setattr(
+        sys.modules["warp"], "get_cuda_device_count", fake.get_cuda_device_count, raising=False
+    )
+
+
+def test_warp_without_gpu_is_fail(two_gpus, monkeypatch):
+    _fake_warp(monkeypatch, 0)
+    check = _by_name(run_checks(_orb("cuda:1")))["warp"]
+    assert check.status == "fail" and "driver" in check.hint
+
+
+def test_warp_with_gpu_is_ok(two_gpus, monkeypatch):
+    _fake_warp(monkeypatch, 2)
+    assert _by_name(run_checks(_orb("cuda:1")))["warp"].status == "ok"
+
+
+def test_warp_check_skipped_without_cuda(no_cuda):
+    assert "warp" not in _by_name(run_checks(_orb("cpu")))
