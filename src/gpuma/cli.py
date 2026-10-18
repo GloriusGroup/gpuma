@@ -42,10 +42,12 @@ from .cli_report import (
     stdout_to_stderr,
     structure_record,
 )
-from .config import Config, load_config_from_file, save_config_to_file
+from .config import Config, load_config_from_file, resolve_model_type, save_config_to_file
 from .config_schema import config_json_schema
+from .models.device import _parse_device_string
 from .utils.io_handler import (
     read_multi_xyz,
+    read_xyz,
     read_xyz_directory,
     save_multi_xyz,
     save_xyz_file,
@@ -472,13 +474,18 @@ def cmd_optimize(args, config: Config) -> CommandResult:
     This command optimizes a single molecular structure from either a SMILES
     string or an XYZ file using the configured model backend.
     """
+    if not args.smiles:
+        config.optimization.charge = _cli_override(args, "charge", config.optimization.charge)
+    config.optimization.multiplicity = _cli_override(
+        args, "multiplicity", config.optimization.multiplicity
+    )
+    if args.dry_run:
+        return _dry_run_result("optimize", args, config)
     if args.smiles:
-        eff_mult = _cli_override(args, "multiplicity", config.optimization.multiplicity)
-        config.optimization.multiplicity = eff_mult
         logger.info(
             "Converting SMILES '%s' to 3D coordinates and optimizing (multiplicity=%d)...",
             args.smiles,
-            eff_mult,
+            config.optimization.multiplicity,
         )
         optimized = optimize_single_smiles(
             smiles=args.smiles,
@@ -486,16 +493,12 @@ def cmd_optimize(args, config: Config) -> CommandResult:
             config=config,
         )
     else:
-        eff_charge = _cli_override(args, "charge", config.optimization.charge)
-        eff_mult = _cli_override(args, "multiplicity", config.optimization.multiplicity)
         logger.info(
             "Reading and optimizing structure from %s (charge=%d, multiplicity=%d)",
             args.xyz,
-            eff_charge,
-            eff_mult,
+            config.optimization.charge,
+            config.optimization.multiplicity,
         )
-        config.optimization.charge = eff_charge
-        config.optimization.multiplicity = eff_mult
         optimized = optimize_single_xyz_file(
             input_file=args.xyz,
             output_file=args.output,
@@ -523,6 +526,8 @@ def cmd_ensemble(args, config: Config) -> CommandResult:
     This command optimizes multiple conformers of the same molecule using
     batch inference.
     """
+    if args.dry_run:
+        return _dry_run_result("ensemble", args, config)
     num_conf = _resolve_conformer_count(args, config)
     logger.info("Generating %d conformers for SMILES: %s", num_conf, args.smiles)
     config.conformer_generation.max_num_conformers = num_conf
@@ -551,13 +556,44 @@ def cmd_ensemble(args, config: Config) -> CommandResult:
     )
 
 
-def _count_batch_inputs(args, config: Config) -> int:
-    """Return the number of input structures of a ``batch`` command."""
+_DRY_RUN_COMMANDS = ("optimize", "smiles", "ensemble", "batch")
+
+
+def _check_smiles(smiles: str) -> None:
+    from rdkit import Chem
+
+    if Chem.MolFromSmiles(smiles) is None:
+        raise ValueError(f"Invalid SMILES: {smiles!r}")
+
+
+def _check_inputs(args, config: Config) -> int:
+    """Validate inputs, model type and device without loading a model; return ``n_input``."""
+    resolve_model_type(config)
+    _parse_device_string(str(config.technical.device))
     charge = int(config.optimization.charge)
     multiplicity = int(config.optimization.multiplicity)
+    if args.command in ("optimize", "smiles"):
+        if args.smiles:
+            _check_smiles(args.smiles)
+        else:
+            read_xyz(args.xyz, charge=charge, multiplicity=multiplicity)
+        return 1
+    if args.command == "ensemble":
+        _check_smiles(args.smiles)
+        return _resolve_conformer_count(args, config)
     if args.multi_xyz:
-        return len(read_multi_xyz(args.multi_xyz, charge=charge, multiplicity=multiplicity))
-    return len(read_xyz_directory(args.xyz_dir, charge=charge, multiplicity=multiplicity))
+        structures = read_multi_xyz(args.multi_xyz, charge=charge, multiplicity=multiplicity)
+    else:
+        structures = read_xyz_directory(args.xyz_dir, charge=charge, multiplicity=multiplicity)
+    if not structures:
+        raise ValueError("No input structures found")
+    return len(structures)
+
+
+def _dry_run_result(command: str, args, config: Config) -> CommandResult:
+    n_input = _check_inputs(args, config)
+    logger.info("Dry run: %d input structure(s) valid; no model loaded.", n_input)
+    return CommandResult(command, "dry_run", EXIT_OK, output_file=args.output, n_input=n_input)
 
 
 def cmd_batch(args, config: Config) -> CommandResult:
@@ -566,7 +602,9 @@ def cmd_batch(args, config: Config) -> CommandResult:
     config.optimization.charge = eff_charge
     eff_mult = _cli_override(args, "multiplicity", config.optimization.multiplicity)
     config.optimization.multiplicity = eff_mult
-    n_input = _count_batch_inputs(args, config)
+    if args.dry_run:
+        return _dry_run_result("batch", args, config)
+    n_input = _check_inputs(args, config)
 
     if args.multi_xyz:
         logger.info(
@@ -811,6 +849,8 @@ def main(argv=None) -> int:
     if not args.command:
         parser.print_help()
         return 1
+    if args.dry_run and args.command not in _DRY_RUN_COMMANDS:
+        parser.error(f"--dry-run applies to {', '.join(_DRY_RUN_COMMANDS)} only")
 
     if not args.json:
         result, _ = _execute(args, parser)

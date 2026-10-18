@@ -123,3 +123,58 @@ def test_exit_code_for(exc, code):
     from gpuma.cli_report import exit_code_for
 
     assert exit_code_for(exc) == code
+
+
+# ---------------------------------------------------------------------------
+# --dry-run
+# ---------------------------------------------------------------------------
+
+
+def _forbid_api(monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("dry run must not call the optimization API")
+
+    for name in (
+        "optimize_single_smiles", "optimize_single_xyz_file", "optimize_ensemble_smiles",
+        "optimize_batch_multi_xyz_file", "optimize_batch_xyz_directory",
+    ):
+        monkeypatch.setattr(cli, name, forbidden)
+
+
+def test_dry_run_does_not_call_api(tmp_path, monkeypatch, capsys):
+    _forbid_api(monkeypatch)
+    assert main(_batch_argv(tmp_path, "--dry-run", "--json")) == 0
+    s = json.loads(capsys.readouterr().out)
+    assert s["status"] == "dry_run" and s["n_input"] == N_MULTI
+
+
+def test_dry_run_ensemble_reports_conformer_count(tmp_path, monkeypatch, capsys):
+    _forbid_api(monkeypatch)
+    argv = ["ensemble", "--smiles", "CCO", "--conformers", "3", "-o", "o.xyz",
+            "-c", _write_config(tmp_path), "--dry-run", "--json"]
+    assert main(argv) == 0
+    assert json.loads(capsys.readouterr().out)["n_input"] == 3
+
+
+def test_dry_run_bad_smiles_exit_3(tmp_path, monkeypatch, capsys):
+    _forbid_api(monkeypatch)
+    argv = ["optimize", "--smiles", "C1CC", "-o", "o.xyz", "-c", _write_config(tmp_path),
+            "--dry-run", "--json"]
+    assert main(argv) == 3
+    assert "SMILES" in json.loads(capsys.readouterr().out)["error"]["message"]
+
+
+def test_dry_run_bad_device_exit_3(tmp_path, monkeypatch, capsys):
+    import torch
+
+    _forbid_api(monkeypatch)
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    argv = _batch_argv(tmp_path, "--dry-run", "--json", "--device", "cuda")
+    assert main(argv) == 3
+    assert "CUDA is not available" in json.loads(capsys.readouterr().out)["error"]["message"]
+
+
+def test_dry_run_on_convert_is_usage_error():
+    with pytest.raises(SystemExit) as exc_info:
+        main(["convert", "--smiles", "C", "-o", "o.xyz", "--dry-run"])
+    assert exc_info.value.code == 2
