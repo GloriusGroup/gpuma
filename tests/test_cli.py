@@ -346,9 +346,7 @@ def test_missing_explicit_config_is_a_usage_error(tmp_path):
 
 
 def test_validate_rejects_a_missing_file(tmp_path):
-    with pytest.raises(SystemExit) as exc_info:
-        main(["config", "--validate", str(tmp_path / "nope.json")])
-    assert exc_info.value.code == 1
+    assert main(["config", "--validate", str(tmp_path / "nope.json")]) == 3
 
 
 def test_no_config_anywhere_reports_defaults(tmp_path, monkeypatch):

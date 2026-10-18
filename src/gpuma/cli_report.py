@@ -1,0 +1,128 @@
+"""Exit codes and the machine-readable ``--json`` run summary of the CLI."""
+
+from __future__ import annotations
+
+import contextlib
+import os
+import sys
+from dataclasses import dataclass, field
+from importlib.metadata import PackageNotFoundError, version
+from typing import Any
+
+from .config import Config
+from .models.device import _parse_device_string
+from .structure import Structure
+
+EXIT_OK = 0
+EXIT_FAILURE = 1
+EXIT_USAGE = 2
+EXIT_INVALID_INPUT = 3
+EXIT_PARTIAL = 4
+
+SUMMARY_SCHEMA_VERSION = 1
+
+
+@dataclass
+class CommandResult:
+    """Outcome of one CLI command, rendered by :func:`build_summary`."""
+
+    command: str
+    status: str  # "ok" | "partial" | "error" | "dry_run"
+    exit_code: int
+    output_file: str | None = None
+    n_input: int | None = None
+    structures: list[dict[str, Any]] = field(default_factory=list)
+    error: dict[str, str] | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
+
+
+def _gpuma_version() -> str | None:
+    try:
+        return version("gpuma")
+    except PackageNotFoundError:
+        return None
+
+
+def structure_record(index: int, s: Structure) -> dict[str, Any]:
+    """Return the JSON record for one returned structure."""
+    return {
+        "index": index,
+        "n_atoms": s.n_atoms,
+        "charge": s.charge,
+        "multiplicity": s.multiplicity,
+        "energy_ev": s.energy,
+        "comment": s.comment,
+    }
+
+
+def redacted_config(config: Config) -> dict[str, Any]:
+    """Return the config as a dict with the Hugging Face token masked."""
+    data = config.to_dict()
+    if data.get("model", {}).get("huggingface_token"):
+        data["model"]["huggingface_token"] = "***"
+    return data
+
+
+def exit_code_for(exc: BaseException) -> int:
+    """Map an exception to the CLI exit code."""
+    if isinstance(exc, (ValueError, FileNotFoundError)):
+        return EXIT_INVALID_INPUT
+    return EXIT_FAILURE
+
+
+def _resolved_device(config: Config) -> str:
+    raw = str(config.technical.device)
+    try:
+        return _parse_device_string(raw)
+    except ValueError:
+        return raw
+
+
+def build_summary(
+    result: CommandResult,
+    config: Config | None,
+    wall_time_s: float,
+    diagnostics: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Return the single JSON object printed by ``--json``."""
+    summary = {
+        "schema_version": SUMMARY_SCHEMA_VERSION,
+        "gpuma_version": _gpuma_version(),
+        "command": result.command,
+        "status": result.status,
+        "exit_code": result.exit_code,
+        "output_file": result.output_file,
+        "device": _resolved_device(config) if config is not None else None,
+        "model": (
+            {"type": config.model.model_type, "name": config.model.model_name}
+            if config is not None
+            else None
+        ),
+        "config": redacted_config(config) if config is not None else None,
+        "n_input": result.n_input,
+        "n_returned": len(result.structures),
+        "structures": result.structures,
+        "wall_time_s": round(wall_time_s, 3),
+        "diagnostics": diagnostics,
+        "error": result.error,
+    }
+    summary.update(result.extra)
+    return summary
+
+
+@contextlib.contextmanager
+def stdout_to_stderr():
+    """Send everything printed during a ``--json`` run to stderr, Python and C level."""
+    sys.stdout.flush()
+    try:
+        saved_fd = os.dup(1)
+        os.dup2(2, 1)
+    except OSError:
+        saved_fd = None
+    try:
+        with contextlib.redirect_stdout(sys.stderr):
+            yield
+    finally:
+        if saved_fd is not None:
+            os.dup2(saved_fd, 1)
+            os.close(saved_fd)

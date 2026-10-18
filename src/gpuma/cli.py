@@ -17,9 +17,11 @@ The ``--model-type`` CLI flag can override it for any backend
 """
 
 import argparse
+import json
 import logging
 import os
 import sys
+import time
 import warnings
 
 from .api import (
@@ -29,14 +31,27 @@ from .api import (
     optimize_single_smiles,
     optimize_single_xyz_file,
 )
+from .cli_report import (
+    EXIT_INVALID_INPUT,
+    EXIT_OK,
+    EXIT_PARTIAL,
+    CommandResult,
+    build_summary,
+    exit_code_for,
+    stdout_to_stderr,
+    structure_record,
+)
 from .config import Config, load_config_from_file, save_config_to_file
 from .utils.io_handler import (
+    read_multi_xyz,
+    read_xyz_directory,
     save_multi_xyz,
     save_xyz_file,
     smiles_to_ensemble,
     smiles_to_xyz,
 )
 from .utils.logging_utils import configure_logging
+from .utils.reporting import diagnostic_report
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -431,194 +446,234 @@ def _resolve_conformer_count(args, config: Config) -> int:
     return int(requested)
 
 
-def cmd_optimize(args, config: Config) -> None:
+def cmd_optimize(args, config: Config) -> CommandResult:
     """Handle the single-structure optimization command.
 
     This command optimizes a single molecular structure from either a SMILES
     string or an XYZ file using the configured model backend.
     """
-    try:
-        if args.smiles:
-            eff_mult = _cli_override(args, "multiplicity", config.optimization.multiplicity)
-            config.optimization.multiplicity = eff_mult
-            logger.info(
-                "Converting SMILES '%s' to 3D coordinates and optimizing (multiplicity=%d)...",
-                args.smiles,
-                eff_mult,
-            )
-            optimized = optimize_single_smiles(
-                smiles=args.smiles,
-                output_file=args.output,
-                config=config,
-            )
-        else:
-            eff_charge = _cli_override(args, "charge", config.optimization.charge)
-            eff_mult = _cli_override(args, "multiplicity", config.optimization.multiplicity)
-            logger.info(
-                "Reading and optimizing structure from %s (charge=%d, multiplicity=%d)",
-                args.xyz,
-                eff_charge,
-                eff_mult,
-            )
-            config.optimization.charge = eff_charge
-            config.optimization.multiplicity = eff_mult
-            optimized = optimize_single_xyz_file(
-                input_file=args.xyz,
-                output_file=args.output,
-                config=config,
-            )
-
+    if args.smiles:
+        eff_mult = _cli_override(args, "multiplicity", config.optimization.multiplicity)
+        config.optimization.multiplicity = eff_mult
         logger.info(
-            "Optimization completed. Final energy: %.6f eV",
-            optimized.energy if optimized.energy is not None else float("nan"),
+            "Converting SMILES '%s' to 3D coordinates and optimizing (multiplicity=%d)...",
+            args.smiles,
+            eff_mult,
         )
-        logger.info("Optimized structure saved to %s", args.output)
+        optimized = optimize_single_smiles(
+            smiles=args.smiles,
+            output_file=args.output,
+            config=config,
+        )
+    else:
+        eff_charge = _cli_override(args, "charge", config.optimization.charge)
+        eff_mult = _cli_override(args, "multiplicity", config.optimization.multiplicity)
+        logger.info(
+            "Reading and optimizing structure from %s (charge=%d, multiplicity=%d)",
+            args.xyz,
+            eff_charge,
+            eff_mult,
+        )
+        config.optimization.charge = eff_charge
+        config.optimization.multiplicity = eff_mult
+        optimized = optimize_single_xyz_file(
+            input_file=args.xyz,
+            output_file=args.output,
+            config=config,
+        )
 
-    except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Error during single structure optimization: %s", exc)
-        sys.exit(1)
+    logger.info(
+        "Optimization completed. Final energy: %.6f eV",
+        optimized.energy if optimized.energy is not None else float("nan"),
+    )
+    logger.info("Optimized structure saved to %s", args.output)
+    return CommandResult(
+        "optimize",
+        "ok",
+        EXIT_OK,
+        output_file=args.output,
+        n_input=1,
+        structures=[structure_record(0, optimized)],
+    )
 
 
-def cmd_ensemble(args, config: Config) -> None:
+def cmd_ensemble(args, config: Config) -> CommandResult:
     """Handle conformer ensemble optimization from SMILES.
 
     This command optimizes multiple conformers of the same molecule using
     batch inference.
     """
-    try:
-        num_conf = _resolve_conformer_count(args, config)
-        logger.info("Generating %d conformers for SMILES: %s", num_conf, args.smiles)
-        config.conformer_generation.max_num_conformers = num_conf
+    num_conf = _resolve_conformer_count(args, config)
+    logger.info("Generating %d conformers for SMILES: %s", num_conf, args.smiles)
+    config.conformer_generation.max_num_conformers = num_conf
 
-        optimized_conformers = optimize_ensemble_smiles(
-            smiles=args.smiles,
+    optimized_conformers = optimize_ensemble_smiles(
+        smiles=args.smiles,
+        output_file=args.output,
+        config=config,
+    )
+
+    if not optimized_conformers:
+        raise RuntimeError("No conformers found")
+
+    logger.info(
+        "Ensemble optimization completed successfully! %d optimized conformers saved to %s",
+        len(optimized_conformers),
+        args.output,
+    )
+    return CommandResult(
+        "ensemble",
+        "ok",
+        EXIT_OK,
+        output_file=args.output,
+        n_input=num_conf,
+        structures=[structure_record(i, s) for i, s in enumerate(optimized_conformers)],
+    )
+
+
+def _count_batch_inputs(args, config: Config) -> int:
+    """Return the number of input structures of a ``batch`` command."""
+    charge = int(config.optimization.charge)
+    multiplicity = int(config.optimization.multiplicity)
+    if args.multi_xyz:
+        return len(read_multi_xyz(args.multi_xyz, charge=charge, multiplicity=multiplicity))
+    return len(read_xyz_directory(args.xyz_dir, charge=charge, multiplicity=multiplicity))
+
+
+def cmd_batch(args, config: Config) -> CommandResult:
+    """Handle batch optimization from files (multi-XYZ or directory)."""
+    eff_charge = _cli_override(args, "charge", config.optimization.charge)
+    config.optimization.charge = eff_charge
+    eff_mult = _cli_override(args, "multiplicity", config.optimization.multiplicity)
+    config.optimization.multiplicity = eff_mult
+    n_input = _count_batch_inputs(args, config)
+
+    if args.multi_xyz:
+        logger.info(
+            "Reading structures from multi-XYZ file: %s (charge=%d, multiplicity=%d)",
+            args.multi_xyz,
+            eff_charge,
+            eff_mult,
+        )
+
+        structures = optimize_batch_multi_xyz_file(
+            input_file=args.multi_xyz,
+            output_file=args.output,
+            config=config,
+        )
+    else:
+        logger.info(
+            "Reading structures from directory: %s (charge=%d, multiplicity=%d)",
+            args.xyz_dir,
+            eff_charge,
+            eff_mult,
+        )
+        structures = optimize_batch_xyz_directory(
+            input_directory=args.xyz_dir,
             output_file=args.output,
             config=config,
         )
 
-        if not optimized_conformers:
-            logger.error("No conformers found")
-            sys.exit(1)
+    if not structures:
+        raise RuntimeError("No structures were optimized")
 
-        logger.info(
-            "Ensemble optimization completed successfully! %d optimized conformers saved to %s",
-            len(optimized_conformers),
-            args.output,
+    records = [structure_record(i, s) for i, s in enumerate(structures)]
+    if len(structures) < n_input:
+        logger.warning(
+            "Only %d of %d structures were optimized; see the log for the failures.",
+            len(structures),
+            n_input,
+        )
+        return CommandResult(
+            "batch",
+            "partial",
+            EXIT_PARTIAL,
+            output_file=args.output,
+            n_input=n_input,
+            structures=records,
         )
 
-    except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Error during ensemble optimization: %s", exc)
-        sys.exit(1)
+    logger.info("Batch optimization completed successfully!")
+    logger.info("Optimized structures saved to %s", args.output)
+    return CommandResult(
+        "batch",
+        "ok",
+        EXIT_OK,
+        output_file=args.output,
+        n_input=n_input,
+        structures=records,
+    )
 
 
-def cmd_batch(args, config: Config) -> None:
-    """Handle batch optimization from files (multi-XYZ or directory)."""
-    try:
-        eff_charge = _cli_override(args, "charge", config.optimization.charge)
-        config.optimization.charge = eff_charge
-        eff_mult = _cli_override(args, "multiplicity", config.optimization.multiplicity)
-        config.optimization.multiplicity = eff_mult
-
-        if args.multi_xyz:
-            logger.info(
-                "Reading structures from multi-XYZ file: %s (charge=%d, multiplicity=%d)",
-                args.multi_xyz,
-                eff_charge,
-                eff_mult,
-            )
-
-            structures = optimize_batch_multi_xyz_file(
-                input_file=args.multi_xyz,
-                output_file=args.output,
-                config=config,
-            )
-        else:
-            logger.info(
-                "Reading structures from directory: %s (charge=%d, multiplicity=%d)",
-                args.xyz_dir,
-                eff_charge,
-                eff_mult,
-            )
-            structures = optimize_batch_xyz_directory(
-                input_directory=args.xyz_dir,
-                output_file=args.output,
-                config=config,
-            )
-
-        if not structures:
-            logger.error("No structures found for batch optimization")
-            sys.exit(1)
-
-        logger.info("Batch optimization completed successfully!")
-        logger.info("Optimized structures saved to %s", args.output)
-
-    except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Error during batch optimization: %s", exc)
-        sys.exit(1)
-
-
-def cmd_convert(args, config: Config) -> None:
+def cmd_convert(args, config: Config) -> CommandResult:
     """Handle the SMILES to XYZ conversion command.
 
     This command generates a single 3D structure from SMILES without running
     any optimization. ``config`` selects the embedding device.
     """
-    try:
-        logger.info("Converting SMILES '%s' to XYZ without optimization", args.smiles)
-        structure = smiles_to_xyz(args.smiles, config=config)
-        save_xyz_file(structure, args.output)
-        logger.info("Structure saved to %s", args.output)
-    except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Error during SMILES to XYZ conversion: %s", exc)
-        sys.exit(1)
+    logger.info("Converting SMILES '%s' to XYZ without optimization", args.smiles)
+    structure = smiles_to_xyz(args.smiles, config=config)
+    save_xyz_file(structure, args.output)
+    logger.info("Structure saved to %s", args.output)
+    return CommandResult(
+        "convert",
+        "ok",
+        EXIT_OK,
+        output_file=args.output,
+        n_input=1,
+        structures=[structure_record(0, structure)],
+    )
 
 
-def cmd_generate(args, config: Config) -> None:
+def cmd_generate(args, config: Config) -> CommandResult:
     """Handle conformer generation from SMILES.
 
     This command generates a conformer ensemble from a SMILES string without
     optimization.
     """
-    try:
-        num_conf = _resolve_conformer_count(args, config)
-        logger.info(
-            "Generating %d conformers for SMILES (no optimization): %s",
-            num_conf,
-            args.smiles,
-        )
-        # multiplicity was omitted here, so smiles_to_ensemble fell back to its
-        # own default of 1 and silently ignored the configured value -- unlike
-        # the 'ensemble' command, which passes it.
-        structures = smiles_to_ensemble(
-            args.smiles,
-            num_conf,
-            multiplicity=int(config.optimization.multiplicity),
-            config=config,
-        )
-        comments = [
-            f"Generated conformer {i + 1} from SMILES: {args.smiles}"
-            for i in range(len(structures))
-        ]
-        save_multi_xyz(structures, args.output, comments)
-        logger.info("Generated conformers saved to %s", args.output)
-    except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Error during conformer generation: %s", exc)
-        sys.exit(1)
+    num_conf = _resolve_conformer_count(args, config)
+    logger.info(
+        "Generating %d conformers for SMILES (no optimization): %s",
+        num_conf,
+        args.smiles,
+    )
+    # multiplicity was omitted here, so smiles_to_ensemble fell back to its
+    # own default of 1 and silently ignored the configured value -- unlike
+    # the 'ensemble' command, which passes it.
+    structures = smiles_to_ensemble(
+        args.smiles,
+        num_conf,
+        multiplicity=int(config.optimization.multiplicity),
+        config=config,
+    )
+    comments = [
+        f"Generated conformer {i + 1} from SMILES: {args.smiles}" for i in range(len(structures))
+    ]
+    save_multi_xyz(structures, args.output, comments)
+    logger.info("Generated conformers saved to %s", args.output)
+    return CommandResult(
+        "generate",
+        "ok",
+        EXIT_OK,
+        output_file=args.output,
+        n_input=num_conf,
+        structures=[structure_record(i, s) for i, s in enumerate(structures)],
+    )
 
 
-def cmd_config(args, config: Config) -> None:
+def cmd_config(args, config: Config) -> CommandResult:
     """Handle configuration file management commands."""
     if args.create:
         logger.info("Creating default configuration file at %s", args.create)
         save_config_to_file(config, args.create)
         logger.info("Configuration file created")
-    elif args.validate:
-        if not os.path.exists(args.validate):
-            logger.error("Configuration file not found: %s", args.validate)
-            sys.exit(1)
-        logger.info("Validating configuration file at %s", args.validate)
-        _ = load_config_from_file(args.validate)
-        logger.info("Configuration file is valid")
+        return CommandResult("config", "ok", EXIT_OK, output_file=args.create)
+    if not os.path.exists(args.validate):
+        raise FileNotFoundError(f"Configuration file not found: {args.validate}")
+    logger.info("Validating configuration file at %s", args.validate)
+    _ = load_config_from_file(args.validate)
+    logger.info("Configuration file is valid")
+    return CommandResult("config", "ok", EXIT_OK)
 
 
 def _apply_global_verbosity_flags(config: Config, verbose: bool, quiet: bool) -> None:
@@ -655,6 +710,59 @@ def _resolve_config_path(args, parser: argparse.ArgumentParser) -> tuple[str, bo
     return "config.json", not os.path.exists("config.json")
 
 
+_HANDLERS = {
+    "optimize": cmd_optimize,
+    "smiles": cmd_optimize,
+    "ensemble": cmd_ensemble,
+    "batch": cmd_batch,
+    "convert": cmd_convert,
+    "generate": cmd_generate,
+    "config": cmd_config,
+}
+
+
+def _load_config(args, parser: argparse.ArgumentParser) -> Config:
+    """Load the config and apply the global CLI overrides and logging level."""
+    cfg_path, using_defaults = _resolve_config_path(args, parser)
+    config = load_config_from_file(cfg_path)
+
+    _apply_global_verbosity_flags(config, args.verbose, args.quiet)
+    _apply_device_override(config, args.device)
+    _apply_model_type_override(config, args.model_type)
+    configure_logging(_level_from_string(config.technical.logging_level))
+
+    if using_defaults and args.command != "config":
+        logger.warning(
+            "No --config given and no config.json in the working directory; "
+            "using built-in defaults (model %s / %s).",
+            config.model.model_type,
+            config.model.model_name,
+        )
+    return config
+
+
+def _error_result(command: str, exc: Exception) -> CommandResult:
+    """Log ``exc`` and return the matching error result."""
+    code = exit_code_for(exc)
+    if code == EXIT_INVALID_INPUT:
+        logger.error("gpuma %s: %s", command, exc)
+    else:
+        logger.exception("gpuma %s failed: %s", command, exc)
+    return CommandResult(
+        command, "error", code, error={"type": type(exc).__name__, "message": str(exc)}
+    )
+
+
+def _execute(args, parser: argparse.ArgumentParser) -> tuple[CommandResult, Config | None]:
+    """Load the config and run the command, turning exceptions into results."""
+    config = None
+    try:
+        config = _load_config(args, parser)
+        return _HANDLERS[args.command](args, config), config
+    except Exception as exc:
+        return _error_result(args.command, exc), config
+
+
 def main(argv=None) -> int:
     """Entry point for the ``gpuma`` CLI.
 
@@ -667,53 +775,26 @@ def main(argv=None) -> int:
     Returns
     -------
     int
-        Exit status code (``0`` for success).
+        Exit status code (see :mod:`gpuma.cli_report`).
 
     """
     parser = setup_parser()
     args = parser.parse_args(argv)
 
-    cfg_path, using_defaults = _resolve_config_path(args, parser)
-    config = load_config_from_file(cfg_path)
-
-    # Apply verbosity, device, and model-type flags
-    _apply_global_verbosity_flags(config, args.verbose, args.quiet)
-    _apply_device_override(config, getattr(args, "device", None))
-    _apply_model_type_override(config, getattr(args, "model_type", None))
-
-    # Configure logging
-    logging_level = _level_from_string(config.technical.logging_level)
-    configure_logging(logging_level)
-
     if not args.command:
         parser.print_help()
         return 1
 
-    if using_defaults and args.command != "config":
-        logger.warning(
-            "No --config given and no config.json in the working directory; "
-            "using built-in defaults (model %s / %s).",
-            config.model.model_type,
-            config.model.model_name,
-        )
+    if not args.json:
+        result, _ = _execute(args, parser)
+        return result.exit_code
 
-    if args.command in ("optimize", "smiles"):
-        cmd_optimize(args, config)
-    elif args.command == "ensemble":
-        cmd_ensemble(args, config)
-    elif args.command == "batch":
-        cmd_batch(args, config)
-    elif args.command == "convert":
-        cmd_convert(args, config)
-    elif args.command == "generate":
-        cmd_generate(args, config)
-    elif args.command == "config":
-        cmd_config(args, config)
-    else:  # pragma: no cover - defensive guard
-        parser.print_help()
-        return 1
-
-    return 0
+    start = time.perf_counter()
+    with diagnostic_report() as report, stdout_to_stderr():
+        result, config = _execute(args, parser)
+    summary = build_summary(result, config, time.perf_counter() - start, report.to_dict())
+    print(json.dumps(summary), flush=True)
+    return result.exit_code
 
 
 if __name__ == "__main__":  # pragma: no cover
