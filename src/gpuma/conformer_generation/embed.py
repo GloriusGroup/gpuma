@@ -37,6 +37,7 @@ import logging
 from math import isfinite
 from typing import TYPE_CHECKING
 
+from .. import reporting as _reporting
 from ..structure import Structure
 
 if TYPE_CHECKING:  # pragma: no cover - annotation only, avoids importing torch
@@ -337,6 +338,7 @@ def _force_field_for(mol) -> str | None:
     return None
 
 
+@_reporting._instrument("embed", "morfeus")
 def _embed_cpu(
     prepared,
     n_confs_override,
@@ -381,10 +383,13 @@ def _embed_cpu(
     for idx, smiles, mol, charge in prepared:
         n_confs = _conf_budget(mol, n_confs_override)
         force_field = _force_field_for(mol)
+        _reporting._emit("embed", "embedding_submitted", input_index=idx, requested=n_confs)
+        _reporting._field(idx, force_field, "morfeus_flags_discarded")
         if force_field is None:
             logger.warning(
                 "no MMFF94 or UFF parameters for %s; keeping unminimized conformer", smiles
             )
+        report_phase = "embedding_or_ff_exception"
         try:
             ensemble = ConformerEnsemble.from_rdkit(
                 mol,
@@ -394,9 +399,13 @@ def _embed_cpu(
                 rmsd_thres=None,  # pruning is deferred to _prune_by_rmsd
                 n_threads=n_threads,
             )
+            identities = _reporting._cpu_conformers(idx, ensemble, n_confs)
             ensemble.multiplicity = multiplicity
+            report_phase = "operation_exception"
             ensemble.sort()
         except Exception as exc:  # noqa: BLE001 - one bad molecule must not stop the batch
+            _reporting._emit("embed", report_phase, input_index=idx,
+                             exception_type=type(exc).__name__)
             logger.warning("embedding failed for %s: %s", smiles, exc)
             continue
 
@@ -407,13 +416,18 @@ def _embed_cpu(
 
         # sort() has put lowest energy first, which is what the prune needs.
         records: list[tuple[list[str], list[tuple[float, float, float]]]] = []
+        record_ids = []
         for conformer in conformers:
+            conformer_id = _reporting._conformer_id(identities, conformer)
             symbols = _to_symbol_list(getattr(conformer, "elements", []))
             coordinates = _to_coord_list(getattr(conformer, "coordinates", []))
             if len(symbols) != len(coordinates):
+                _reporting._emit("embed", "invalid_conformer", input_index=idx,
+                                 conformer_id=conformer_id)
                 logger.warning("element/coordinate mismatch for %s", smiles)
                 continue
             records.append((symbols, coordinates))
+            record_ids.append(conformer_id)
         if not records:
             logger.warning("no usable conformers for %s", smiles)
             continue
@@ -436,11 +450,13 @@ def _embed_cpu(
             )
             for i in survivors[:n_keep]
         ]
+        _reporting._selection(idx, record_ids, survivors, n_keep)
         if kept:
             out[idx] = kept
     return out
 
 
+@_reporting._instrument("embed", "nvmolkit")
 def _embed_gpu(
     prepared,
     n_confs_override,
@@ -493,13 +509,17 @@ def _embed_gpu(
         mols = [m for _, _, m, _ in members]
         # nvMolKit mandates useRandomCoords=True.
         params = _etkdg_params(seed, random_coords=True)
+        for idx, _, _, _ in members:
+            _reporting._emit("embed", "embedding_submitted", input_index=idx, requested=n_confs)
         EmbedMolecules(mols, params, confsPerMolecule=n_confs, hardwareOptions=hardware)
+        _reporting._gpu_generated(members, n_confs)
 
         by_field: dict[str, list] = {"MMFF94": [], "UFF": []}
         for mol in mols:
             if not mol.GetNumConformers():
                 continue
             field = _force_field_for(mol)
+            _reporting._gpu_field(members, mol, field)
             if field is not None:
                 by_field[field].append(mol)
 
@@ -539,6 +559,7 @@ def _embed_gpu(
                 _to_structure(mol, ranked[i], charge, multiplicity, smiles)
                 for i in survivors[:n_keep]
             ]
+            _reporting._selection(idx, ranked, survivors, n_keep)
             # Guarded like the CPU backend: a molecule that yields nothing gets
             # no entry, so _generate reports it as None. Assigning [] here would
             # make the two backends disagree about what "failed" looks like.
@@ -547,6 +568,7 @@ def _embed_gpu(
     return out
 
 
+@_reporting._instrument("embed")
 def _generate(
     smiles_list: list[str],
     config: Config | None = None,
@@ -659,8 +681,14 @@ def _generate(
     prepared = []
     results: list[list[Structure] | None] = [None] * len(smiles_list)
     for idx, smiles in enumerate(smiles_list):
-        got = _prepare(smiles)
+        try:
+            got = _prepare(smiles)
+        except BaseException as exc:
+            _reporting._emit("prepare", "operation_exception", input_index=idx,
+                             exception_type=type(exc).__name__)
+            raise
         if got is None:
+            _reporting._emit("prepare", "parse_rejected", input_index=idx)
             logger.warning("could not parse SMILES at index %d: %r", idx, smiles)
             continue
         mol, charge = got
@@ -699,6 +727,8 @@ def _generate(
         except Exception as exc:  # noqa: BLE001 - a GPU fault must not lose the run
             if not allow_cpu_fallback:
                 raise
+            _reporting._emit("embed", "backend_fallback", backend="nvmolkit",
+                             exception_type=type(exc).__name__, evidence_source="retry_morfeus")
             logger.warning("GPU embedding unavailable (%s); falling back to CPU", exc)
             out = _embed_cpu(
                 prepared,
