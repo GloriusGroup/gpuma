@@ -350,18 +350,14 @@ def validate_config(config: Config) -> None:
             f"Unknown model_type {raw_model_type!r}. Must be one of: {sorted(VALID_MODEL_TYPES)}"
         )
 
-    # Batch optimizer must be a known value; default to "fire" if missing/invalid
+    # Batch optimizer must be a known value; a missing one means "fire"
     raw_optimizer = str(getattr(opt, "batch_optimizer", "fire") or "fire").strip().lower()
     if raw_optimizer not in VALID_BATCH_OPTIMIZERS:
-        logger.warning(
-            "Unknown batch_optimizer %r, defaulting to 'fire'. "
-            "Valid options: %s",
-            raw_optimizer,
-            sorted(VALID_BATCH_OPTIMIZERS),
+        raise ValueError(
+            f"Unknown batch_optimizer {raw_optimizer!r}. "
+            f"Must be one of: {sorted(VALID_BATCH_OPTIMIZERS)}"
         )
-        opt.batch_optimizer = "fire"
-    else:
-        opt.batch_optimizer = raw_optimizer
+    opt.batch_optimizer = raw_optimizer
 
     # Charge and multiplicity must be integers; multiplicity > 0
     charge = getattr(opt, "charge", 0)
@@ -416,8 +412,7 @@ def validate_config(config: Config) -> None:
         )
     tech.memory_scales_with = scales_with
 
-    # If CUDA is requested but not available, we don't fail here; the
-    # runtime will transparently fall back to CPU via model helpers.
+    # CUDA availability is checked at use (models.device), so configs stay portable.
 
 
 # Default configuration instance for convenience
