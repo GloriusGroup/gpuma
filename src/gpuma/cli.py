@@ -23,6 +23,7 @@ import os
 import sys
 import time
 import warnings
+from dataclasses import asdict
 
 from .agent_skills import install_skill
 from .api import (
@@ -33,6 +34,7 @@ from .api import (
     optimize_single_xyz_file,
 )
 from .cli_report import (
+    EXIT_FAILURE,
     EXIT_INVALID_INPUT,
     EXIT_OK,
     EXIT_PARTIAL,
@@ -45,6 +47,7 @@ from .cli_report import (
 )
 from .config import Config, load_config_from_file, resolve_model_type, save_config_to_file
 from .config_schema import config_json_schema
+from .doctor import recommended_device, run_checks
 from .models.device import _parse_device_string
 from .utils.io_handler import (
     read_multi_xyz,
@@ -444,6 +447,24 @@ UTILITY COMMANDS:
         help="Configuration file for --show (default: config.json if exists)",
     )
 
+    # Environment checks
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        parents=common,
+        help="Check GPUs, device, Hugging Face token, model cache and agent skill",
+        description=(
+            "Check the environment without loading a model: CUDA, free GPU memory, the "
+            "configured device, the Hugging Face token (UMA), the model cache and the "
+            "installed agent skill. Exits 1 if any check fails."
+        ),
+    )
+    doctor_parser.add_argument(
+        "--config",
+        "-c",
+        type=str,
+        help="Configuration file path (default: config.json if exists)",
+    )
+
     # Agent skill installation
     skills_parser = subparsers.add_parser(
         "skills",
@@ -804,6 +825,34 @@ def _resolve_config_path(args, parser: argparse.ArgumentParser) -> tuple[str, bo
     return "config.json", not os.path.exists("config.json")
 
 
+def cmd_doctor(args, config: Config) -> CommandResult:
+    """Handle the environment checks."""
+    checks = run_checks(config)
+    for check in checks:
+        log = logger.error if check.status == "fail" else logger.info
+        log("%-12s %-4s %s", check.name, check.status.upper(), check.detail)
+        if check.hint and check.status != "ok":
+            log("%-12s      -> %s", "", check.hint)
+    device = recommended_device(checks)
+    if device:
+        logger.info("Recommended device: %s", device)
+    extra = {
+        "checks": [asdict(c) for c in checks],
+        "recommended_device": device,
+    }
+    failed = [c.name for c in checks if c.status == "fail"]
+    if failed:
+        message = f"failing checks: {', '.join(failed)}"
+        return CommandResult(
+            "doctor",
+            "error",
+            EXIT_FAILURE,
+            error={"type": "DoctorFailure", "message": message},
+            extra=extra,
+        )
+    return CommandResult("doctor", "ok", EXIT_OK, extra=extra)
+
+
 def cmd_skills(args, config: Config | None) -> CommandResult:
     """Handle installation of the agent skill."""
     installed = install_skill(args.target, force=args.force)
@@ -820,6 +869,7 @@ _HANDLERS = {
     "convert": cmd_convert,
     "generate": cmd_generate,
     "config": cmd_config,
+    "doctor": cmd_doctor,
     "skills": cmd_skills,
 }
 
