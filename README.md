@@ -46,7 +46,8 @@ Feedback and improvements are always welcome!
 
 This installs `gpuma` together with all dependencies (including the
 Fairchem UMA, ORB-v3, and SevenNet backends, as well as the nvMolKit GPU
-conformer-embedding backend).
+conformer-embedding backend). Every dependency is pinned to the exact tested
+version, so install gpuma into a fresh environment.
 At the moment, installation and tests have only been
 validated under Python 3.12; using other Python versions is currently
 considered experimental.

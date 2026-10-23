@@ -37,6 +37,14 @@ pip install gpuma
 This pulls in all model backends (Fairchem UMA, ORB-v3, and SevenNet) as
 core dependencies — there is no separate optional extra to install.
 
+### Pinned dependencies
+
+Every dependency in `pyproject.toml` is pinned to the exact version gpuma is
+tested with (`==`, no ranges), including torch, fairchem-core, torch-sim, the
+`dev` extra and the build backend. Installing gpuma into an environment that
+already holds other versions of these packages replaces them, so use a fresh
+environment.
+
 ### GPU conformer embedding
 
 SMILES → 3D conversion can run on the GPU via
@@ -94,4 +102,7 @@ pip install torch==2.13.0 --index-url https://download.pytorch.org/whl/cu126
 uv pip install .
 # or, without uv:
 pip install .
+
+# for development: tests, linting and docs tools, all pinned
+uv pip install -e ".[dev]"
 ```

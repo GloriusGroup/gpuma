@@ -42,6 +42,8 @@ Feedback and improvements are always welcome!
 This installs `gpuma` together with all dependencies (including the
 Fairchem UMA, ORB-v3, and SevenNet backends, plus the nvMolKit GPU
 conformer-embedding backend).
+Every dependency is pinned to the exact tested version, so install gpuma into
+a fresh environment.
 At the moment, installation and tests have only been
 validated under Python 3.12; using other Python versions is currently
 considered experimental.
@@ -142,7 +144,7 @@ Please refer to the documentation for detailed usage examples and API reference.
 When a run is started from SMILES, an RDKit/MMFF force field (via nvMolKit on GPU or the morfeus library on CPU) is used to generate an initial structure. Spin is not taken into account during this step, so the initial estimated geometries can be incorrect. When the MLIP models are applied subsequently, the structure can sometimes be optimized to a maximum rather than a minimum because the model is not provided with Hessian matrices. This behavior only affects runs originating from SMILES; it does not occur with better starting geometries (e.g., when starting from XYZ files).
 
 ## Troubleshooting
-- Missing libraries: install optional dependencies like `pyyaml` if you use YAML configs.
+- Version conflicts: gpuma pins every dependency exactly; install it into a fresh environment.
 - Fairchem/UMA: ensure network access for model downloads and optionally set or provide
 `huggingface_token` (e.g., via a token file) to access the UMA model family.
 - ORB-v3: set `"model_type": "orb"` in the `model` section of your config.
