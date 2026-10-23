@@ -19,8 +19,9 @@ classifiers = [
 
 dependencies = [
   "ase==3.27.0",
+  "torch==2.13.0",
   "torch-sim-atomistic==0.6.2",
-  "fairchem-core==2.18.0",
+  "fairchem-core==2.24.0",
   "morfeus-ml==0.8.0",
   "rdkit==2026.3.1",
   "tables==3.11.1",
@@ -28,7 +29,7 @@ dependencies = [
   "hf_xet==1.2.0",
   "pyyaml==6.0.3",
   "orb-models==0.6.1",
-  "nvalchemi-toolkit-ops==0.4.0",
+  "nvalchemi-toolkit-ops==0.5.0",
   "warp-lang==1.17.0",
   "sevenn[torchsim]==0.13.0",
   "nvmolkit==0.5.1"
