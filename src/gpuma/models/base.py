@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 #: Fairchem UMA model names accepted by ``fairchem.core.pretrained_mlip``.
 AVAILABLE_FAIRCHEM_MODELS: tuple[str, ...] = (
     "uma-s-1p2",
+    "uma-s-1p2p1",
+    "uma-s-1p2p1-ft-d4rev",
     "uma-s-1p1",
     "uma-m-1p1",
 )
@@ -98,9 +100,10 @@ def _verify_model_name_and_cache_dir(config: Config) -> tuple[str, Path | None]:
 
 
 def _verify_model_path(config: Config) -> Path | None:
-    """Return the model checkpoint path if it exists, else ``None``."""
-    opt = config.model
-    if opt.model_path:
-        p = Path(opt.model_path)
-        return p if p.exists() else None
-    return None
+    """Return the model checkpoint path, or ``None`` if none is set."""
+    if not config.model.model_path:
+        return None
+    p = Path(config.model.model_path)
+    if not p.exists():
+        raise ValueError(f"model_path {str(p)!r} does not exist")
+    return p

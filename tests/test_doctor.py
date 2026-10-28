@@ -20,6 +20,7 @@ GPUS = [
 @pytest.fixture
 def no_cuda(monkeypatch):
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(torch.cuda, "init", lambda: None)
 
 
 @pytest.fixture
@@ -33,7 +34,6 @@ def two_gpus(monkeypatch):
 @pytest.fixture
 def no_token(monkeypatch):
     monkeypatch.delenv("HF_TOKEN", raising=False)
-    monkeypatch.delenv("HUGGINGFACE_TOKEN", raising=False)
     monkeypatch.setattr(doctor, "_hub_token", lambda: None)
 
 
@@ -54,6 +54,26 @@ def test_no_cuda_with_cpu_device_is_warn(no_cuda):
     assert _by_name(run_checks(_orb("cpu")))["cuda"].status == "warn"
 
 
+def test_old_driver_names_torch_build(no_cuda, monkeypatch):
+    def init():
+        raise RuntimeError("The NVIDIA driver on your system is too old (found version 12040).")
+
+    monkeypatch.setattr(torch.version, "cuda", "13.0")
+    monkeypatch.setattr(torch.cuda, "init", init)
+    check = _by_name(run_checks(_orb("cuda")))["cuda"]
+    assert "driver is too old" in check.detail and "cu126" in check.hint
+
+
+def test_old_driver_with_cuda12_build_suggests_driver_update(no_cuda, monkeypatch):
+    def init():
+        raise RuntimeError("The NVIDIA driver on your system is too old (found version 11080).")
+
+    monkeypatch.setattr(torch.version, "cuda", "12.6")
+    monkeypatch.setattr(torch.cuda, "init", init)
+    check = _by_name(run_checks(_orb("cuda")))["cuda"]
+    assert "driver is too old" in check.detail and "cu126" not in check.hint
+
+
 def test_uma_without_token_is_fail(two_gpus, no_token):
     config = Config({"model": {"model_type": "fairchem"}, "technical": {"device": "cuda:1"}})
     check = _by_name(run_checks(config))["hf_token"]
@@ -64,6 +84,13 @@ def test_uma_with_env_token_is_ok(two_gpus, no_token, monkeypatch):
     monkeypatch.setenv("HF_TOKEN", "hf_x")
     config = Config({"model": {"model_type": "fairchem"}, "technical": {"device": "cuda:1"}})
     assert _by_name(run_checks(config))["hf_token"].status == "ok"
+
+
+def test_uma_ignores_huggingface_token_env(two_gpus, no_token, monkeypatch):
+    """huggingface_hub doesn't read HUGGINGFACE_TOKEN, so doctor must not count it."""
+    monkeypatch.setenv("HUGGINGFACE_TOKEN", "hf_x")
+    config = Config({"model": {"model_type": "fairchem"}, "technical": {"device": "cuda:1"}})
+    assert _by_name(run_checks(config))["hf_token"].status == "fail"
 
 
 def test_orb_skips_token_check(two_gpus, no_token):
