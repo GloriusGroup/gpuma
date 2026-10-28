@@ -72,7 +72,7 @@ no job scheduler.
 | 1 | Runtime failure | Read `error` in the summary and `run.log` |
 | 2 | Wrong command-line usage | Read stderr and fix the command |
 | 3 | Invalid input, config or device | `error.message` names the problem; fix it, rerun with `--dry-run` |
-| 4 | Some structures failed | `n_returned` < `n_input`; `diagnostics` shows which |
+| 4 | Some structures failed or didn't converge | `n_returned` < `n_input`, or `structures[].converged` is `false` |
 
 For any code other than 0, read
 [references/troubleshooting.md](references/troubleshooting.md).

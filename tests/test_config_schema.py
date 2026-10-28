@@ -72,3 +72,11 @@ def test_schema_bounds_match_validators():
         0.05,
         0.95,
     )
+
+
+def test_schema_step_bounds_match_validators():
+    props = config_json_schema()["properties"]
+    assert props["technical"]["properties"]["steps_between_swaps"]["minimum"] == 1
+    assert props["optimization"]["properties"]["max_steps"] == {
+        "type": "integer", "default": 10_000, "minimum": 1
+    }

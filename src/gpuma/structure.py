@@ -24,6 +24,8 @@ class Structure:
         Optional comment or metadata string.
     metadata : dict
         Free-form metadata dictionary for additional information.
+    converged : bool | None
+        Whether the optimization met its criterion; ``None`` if not optimized.
     """
 
     symbols: list[str]
@@ -35,6 +37,7 @@ class Structure:
 
     # Room for future metadata without breaking the public API
     metadata: dict[str, Any] = field(default_factory=dict)
+    converged: bool | None = None
 
     @property
     def n_atoms(self) -> int:
@@ -63,3 +66,19 @@ class Structure:
         """
         self.energy = energy
         return self
+
+
+def check_spin_state(symbols: list[str], charge: int, multiplicity: int) -> None:
+    """Raise if ``charge`` and ``multiplicity`` are impossible for these atoms."""
+    from ase.data import atomic_numbers
+
+    unknown = sorted({s for s in symbols if s not in atomic_numbers})
+    if unknown:
+        raise ValueError(f"Unknown element symbol(s): {', '.join(unknown)}")
+    electrons = sum(atomic_numbers[s] for s in symbols) - int(charge)
+    unpaired = int(multiplicity) - 1
+    if electrons < 0 or unpaired > electrons or (electrons - unpaired) % 2:
+        raise ValueError(
+            f"{electrons} electrons (charge {charge}) can't have multiplicity {multiplicity}; "
+            "set the multiplicity (or charge) to match"
+        )

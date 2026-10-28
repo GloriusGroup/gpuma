@@ -156,3 +156,29 @@ class TestModelRegistries:
         """AVAILABLE_ORB_MODELS contains all expected model variants."""
         assert len(AVAILABLE_ORB_MODELS) >= 10
         assert "orb_v3_direct_omol" in AVAILABLE_ORB_MODELS
+
+
+def test_loading_orb_leaves_process_matmul_precision_alone():
+    """ORB's loader switched the whole process to TF32 matmuls."""
+    import torch
+
+    from gpuma.models import load_calculator
+
+    torch.set_float32_matmul_precision("highest")
+    load_calculator(Config({
+        "model": {"model_type": "orb", "model_name": "orb_v3_direct_omol"},
+        "technical": {"device": DEVICE},
+    }))
+    assert torch.get_float32_matmul_precision() == "highest"
+
+
+def test_orb_runs_keep_tf32():
+    import torch
+
+    from gpuma.optimizer import _backend_precision
+
+    config = Config({"model": {"model_type": "orb", "model_name": "orb_v3_direct_omol"}})
+    torch.set_float32_matmul_precision("highest")
+    with _backend_precision(config):
+        assert torch.get_float32_matmul_precision() == "high"
+    assert torch.get_float32_matmul_precision() == "highest"

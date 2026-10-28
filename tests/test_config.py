@@ -91,7 +91,7 @@ def test_load_without_path_reads_config_json(tmp_path, monkeypatch):
 
 def test_validate_config():
     """Invalid charge, multiplicity, and device raise ValueError."""
-    with pytest.raises(ValueError, match="Invalid charge"):
+    with pytest.raises(ValueError, match="charge must be an integer"):
         Config({"optimization": {"charge": "invalid"}})
 
     with pytest.raises(ValueError, match="Multiplicity must be a positive integer"):
@@ -544,3 +544,67 @@ def test_d3_warning_for_sevennet_omol25_modal(caplog, modal, warns):
     with caplog.at_level("WARNING", logger="gpuma.config"):
         warn_d3_double_counting(cfg)
     assert ("counts dispersion twice" in caplog.text) is warns
+
+
+@pytest.mark.parametrize("mode", ["batched", "parallel", ""])
+def test_batch_optimization_mode_rejects_unknown(mode):
+    with pytest.raises(ValueError, match="batch_optimization_mode"):
+        Config({"optimization": {"batch_optimization_mode": mode}})
+
+
+def test_batch_optimization_mode_is_normalized():
+    cfg = Config({"optimization": {"batch_optimization_mode": " Sequential "}})
+    assert cfg.optimization.batch_optimization_mode == "sequential"
+
+
+@pytest.mark.parametrize("key", ["charge", "multiplicity"])
+def test_charge_and_multiplicity_reject_fractions(key):
+    """int() used to truncate 1.5 to 1 without a word."""
+    with pytest.raises(ValueError, match=key):
+        Config({"optimization": {key: 1.5}})
+
+
+def test_charge_accepts_integral_float():
+    assert int(Config({"optimization": {"charge": -1.0}}).optimization.charge) == -1
+
+
+@pytest.mark.parametrize(("key", "value"), [("steps_between_swaps", 0),
+                                            ("steps_between_swaps", 1.5),
+                                            ("max_steps", 0),
+                                            ("max_steps", "many")])
+def test_step_counts_must_be_positive_integers(key, value):
+    section = "technical" if key == "steps_between_swaps" else "optimization"
+    with pytest.raises(ValueError, match=key):
+        Config({section: {key: value}})
+
+
+def test_max_steps_default():
+    assert Config().optimization.max_steps == 10_000
+
+
+def test_logging_level_rejects_unknown():
+    with pytest.raises(ValueError, match="logging_level"):
+        Config({"technical": {"logging_level": "verbose"}})
+
+
+def test_logging_level_is_normalized():
+    assert Config({"technical": {"logging_level": "debug"}}).technical.logging_level == "DEBUG"
+
+
+@pytest.mark.parametrize(("model_type", "model_name"), [("orb", "orb_v3_direct_omol"),
+                                                        ("sevennet", "7net-0")])
+def test_model_cache_dir_only_for_fairchem(tmp_path, model_type, model_name):
+    """ORB and SevenNet download to their own caches and would ignore the setting."""
+    with pytest.raises(ValueError, match="model_cache_dir"):
+        Config({"model": {"model_type": model_type, "model_name": model_name,
+                          "model_cache_dir": str(tmp_path)}})
+
+
+def test_uncreatable_model_cache_dir_is_error(tmp_path):
+    from gpuma.models.base import _verify_model_name_and_cache_dir
+
+    blocker = tmp_path / "file"
+    blocker.write_text("")
+    cfg = Config({"model": {"model_cache_dir": str(blocker / "cache")}})
+    with pytest.raises(ValueError, match="model_cache_dir"):
+        _verify_model_name_and_cache_dir(cfg)

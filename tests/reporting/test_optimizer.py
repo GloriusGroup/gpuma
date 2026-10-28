@@ -1,6 +1,7 @@
 import types
 from contextlib import contextmanager, nullcontext
 
+import numpy as np
 import pytest
 
 from .test_embedding import install
@@ -21,6 +22,9 @@ class Tensor:
 
     def tolist(self):
         return self.values
+
+    def __array__(self, dtype=None, copy=None):
+        return np.asarray(self.values, dtype=dtype)
 
     def __getitem__(self, index):
         return types.SimpleNamespace(item=lambda: self.values[index])
@@ -70,6 +74,7 @@ def setup_optimizer(modules, monkeypatch, converged=False):
         VALID_MEMORY_SCALES_WITH={"n_atoms"},
         Config=object,
         load_config_from_file=lambda: None,
+        model_label=lambda config: config.model.model_name,
         resolve_model_type=lambda config: "fairchem",
     )
     install(
@@ -97,6 +102,7 @@ def setup_optimizer(modules, monkeypatch, converged=False):
             batch_optimization_mode="batch",
             force_convergence_criterion=0.05,
             energy_convergence_criterion=None,
+            max_steps=10_000,
         ),
         model=types.SimpleNamespace(model_name="example"),
     )
@@ -180,6 +186,8 @@ def test_torchsim_actual_callback_attribution_and_budget_mutation(
         )
 
     install("torch", device=lambda value: value, float64="float64")
+    install("torch._inductor")
+    install("torch._inductor.config", patch=lambda changes: nullcontext())
     install(
         "torch_sim",
         Optimizer=types.SimpleNamespace(
@@ -204,8 +212,9 @@ def test_torchsim_actual_callback_attribution_and_budget_mutation(
                 report.backend_versions["torch-sim-atomistic"] = "0.6.2"
             inputs = [Structure(["C"], [(i, 0, 0)], 0, 1) for i in range(3)]
             if failure:
+                # Called directly: optimize_structure_batch would retry each structure.
                 with pytest.raises(ValueError) as caught:
-                    optimizer.optimize_structure_batch(inputs, config)
+                    optimizer._optimize_batch(inputs, config)
                 assert caught.value is error
             else:
                 outputs.append(optimizer.optimize_structure_batch(inputs, config))

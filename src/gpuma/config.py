@@ -31,6 +31,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "multiplicity": 1,
         "force_convergence_criterion": 5e-2,
         "energy_convergence_criterion": None,
+        "max_steps": 10_000,
     },
     "model": {
         "model_type": "fairchem",
@@ -94,6 +95,10 @@ VALID_BATCH_OPTIMIZERS: frozenset[str] = frozenset(
     {"fire", "gradient_descent", "lbfgs", "bfgs"}
 )
 
+VALID_BATCH_MODES: frozenset[str] = frozenset({"batch", "sequential"})
+
+VALID_LOGGING_LEVELS: tuple[str, ...] = ("CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG")
+
 # n_atoms_x_density is excluded: it divides by a bounding box, meaningless for molecules.
 VALID_MEMORY_SCALES_WITH: frozenset[str] = frozenset({"auto", "n_atoms", "n_edges"})
 
@@ -112,6 +117,11 @@ def _named_model(config: Config) -> tuple[str, str]:
     return model_type, str(config.model.get("model_name") or "").strip()
 
 
+def model_label(config: Config) -> str:
+    """Return the checkpoint path if one is set, else the model name."""
+    return str(config.model.get("model_path") or config.model.get("model_name") or "unknown")
+
+
 def check_model_path(config: Config) -> None:
     """Raise if ``model_path`` is set but missing, or set for ORB, which only loads names."""
     path = config.model.get("model_path")
@@ -121,6 +131,26 @@ def check_model_path(config: Config) -> None:
         raise ValueError("model_path is not supported for model_type 'orb'; use model_name")
     if not os.path.exists(str(path)):
         raise ValueError(f"model_path {str(path)!r} does not exist")
+
+
+def check_model_cache_dir(config: Config) -> None:
+    """Raise if ``model_cache_dir`` is set for a backend that downloads to its own cache."""
+    model_type = resolve_model_type(config)
+    if config.model.get("model_cache_dir") and model_type != "fairchem":
+        raise ValueError(
+            f"model_cache_dir is only supported for model_type 'fairchem', not {model_type!r}"
+        )
+
+
+def _integer(value: Any, name: str) -> int:
+    """Return ``value`` as an int; raise unless it is a whole number."""
+    try:
+        number = int(value)
+        if number != float(value):
+            raise ValueError
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be an integer, got {value!r}") from exc
+    return number
 
 
 def check_d3_allowed(config: Config) -> None:
@@ -412,7 +442,15 @@ def validate_config(config: Config) -> None:
         )
 
     check_model_path(config)
+    check_model_cache_dir(config)
     check_d3_allowed(config)
+
+    mode = str(getattr(opt, "batch_optimization_mode", "") or "").strip().lower()
+    if mode not in VALID_BATCH_MODES:
+        raise ValueError(
+            f"Unknown batch_optimization_mode {mode!r}. Must be one of: {sorted(VALID_BATCH_MODES)}"
+        )
+    opt.batch_optimization_mode = mode
 
     # Batch optimizer must be a known value; a missing one means "fire"
     raw_optimizer = str(getattr(opt, "batch_optimizer", "fire") or "fire").strip().lower()
@@ -424,18 +462,14 @@ def validate_config(config: Config) -> None:
     opt.batch_optimizer = raw_optimizer
 
     # Charge and multiplicity must be integers; multiplicity > 0
-    charge = getattr(opt, "charge", 0)
-    multiplicity = getattr(opt, "multiplicity", 1)
-    try:
-        int(charge)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"Invalid charge value in config: {charge!r}") from exc
-    try:
-        mult_int = int(multiplicity)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"Invalid multiplicity value in config: {multiplicity!r}") from exc
-    if mult_int <= 0:
+    _integer(getattr(opt, "charge", 0), "charge")
+    multiplicity = _integer(getattr(opt, "multiplicity", 1), "multiplicity")
+    if multiplicity <= 0:
         raise ValueError("Multiplicity must be a positive integer")
+
+    for section, key in ((opt, "max_steps"), (tech, "steps_between_swaps")):
+        if _integer(section.get(key), key) < 1:
+            raise ValueError(f"{key} must be at least 1, got {section.get(key)!r}")
 
     # Convergence criteria
     force_crit = getattr(opt, "force_convergence_criterion", None)
@@ -492,6 +526,13 @@ def validate_config(config: Config) -> None:
         raise ValueError(
             f"max_memory_padding must be between 0.05 and 0.95, got {padding!r}"
         ) from exc
+
+    level = str(getattr(tech, "logging_level", "") or "").strip().upper()
+    if level not in VALID_LOGGING_LEVELS:
+        raise ValueError(
+            f"Unknown logging_level {level!r}. Must be one of: {list(VALID_LOGGING_LEVELS)}"
+        )
+    tech.logging_level = level
 
     # CUDA availability is checked at use (models.device), so configs stay portable.
 

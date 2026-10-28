@@ -20,7 +20,7 @@ SECONDS_PER_AUT_PAIR = 3.1e-6
 SYMMETRIC_BUDGET_SECONDS = 300.0
 
 #: Cap on the automorphism *count*. Reaching it puts the molecule over budget.
-#: Never passed to ``GetBestRMS``, where capping misses real duplicates.
+#: Passed to ``GetBestRMS`` too, whose own default (1e6) would miss real duplicates.
 AUTOMORPHISM_CAP = 2_000_000
 
 
@@ -141,7 +141,11 @@ def symmetric_rmsd_fn(
             conformer.SetAtomPosition(index, Point3D(x, y, z))
         # assignId numbers conformers in insertion order, so ids are indices.
         template.AddConformer(conformer, assignId=True)
-    compared = _strip_nonpolar_hydrogens(template)
+    try:
+        compared = _strip_nonpolar_hydrogens(template)
+    except Chem.MolSanitizeException as exc:
+        logger.warning("%s: %s; using Kabsch RMSD", smiles, exc)
+        return None
 
     n_confs = len(coordinates)
     automorphisms = len(
@@ -163,6 +167,8 @@ def symmetric_rmsd_fn(
     def rmsd(i: int, j: int) -> float:
         # GetBestRMS aligns the probe in place; harmless, since it realigns
         # optimally on every call and ``compared`` is a private copy.
-        return float(GetBestRMS(compared, compared, prbId=int(i), refId=int(j)))
+        return float(
+            GetBestRMS(compared, compared, prbId=int(i), refId=int(j), maxMatches=AUTOMORPHISM_CAP)
+        )
 
     return rmsd

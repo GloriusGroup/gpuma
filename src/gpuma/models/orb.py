@@ -6,14 +6,30 @@ family, optionally wrapped with orb-models' native ``D3SumModel``.
 
 from __future__ import annotations
 
+import contextlib
 import logging
+from collections.abc import Iterator
 from typing import Any
+
+import torch
 
 from ..config import Config, warn_d3_double_counting
 from .base import _verify_model_name_and_cache_dir
 from .device import _device_for_torch, _parse_device_string, _setup_orb_device
 
 logger = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def orb_precision() -> Iterator[None]:
+    """Use ORB's TF32 matmuls inside the block and restore the process settings after."""
+    precision, dtype = torch.get_float32_matmul_precision(), torch.get_default_dtype()
+    torch.set_float32_matmul_precision("high")
+    try:
+        yield
+    finally:
+        torch.set_float32_matmul_precision(precision)
+        torch.set_default_dtype(dtype)
 
 
 def _load_orb_pretrained(config: Config) -> tuple[Any, Any, str]:
@@ -37,7 +53,9 @@ def _load_orb_pretrained(config: Config) -> tuple[Any, Any, str]:
             f"Unknown ORB model name {model_name!r}. "
             "Check orb_models.forcefield.pretrained for available models."
         )
-    orbff, atoms_adapter = loader(device=device)
+    # The loader sets TF32 and the default dtype for the whole process.
+    with orb_precision():
+        orbff, atoms_adapter = loader(device=device)
 
     # Optionally wrap with D3 dispersion correction
     if config.model.d3_correction:

@@ -25,7 +25,8 @@ Unknown fields are preserved. **Always use a config file for CLI and API calls.*
     "multiplicity": 1,
 
     "force_convergence_criterion": 5e-2,
-    "energy_convergence_criterion": null
+    "energy_convergence_criterion": null,
+    "max_steps": 10000
   },
 
   "model": {
@@ -140,6 +141,7 @@ optimization:
 
   force_convergence_criterion: 5.0e-2
   energy_convergence_criterion: null
+  max_steps: 10000
 
 model:
   model_type: fairchem
@@ -180,12 +182,13 @@ technical:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `batch_optimization_mode` | `"batch"` | `"sequential"` (ASE per structure) or `"batch"` (torch-sim GPU-accelerated) |
+| `batch_optimization_mode` | `"batch"` | `"sequential"` (ASE per structure) or `"batch"` (torch-sim GPU-accelerated). If a batch fails, its structures are retried one at a time, so one bad input fails only itself |
 | `batch_optimizer` | `"fire"` | Optimizer for both single and batch modes: `"fire"`, `"gradient_descent"`, `"lbfgs"`, or `"bfgs"`. In single-structure (ASE) mode, maps to ASE FIRE/BFGS/LBFGS (`"gradient_descent"` falls back to FIRE). Defaults to `"fire"` if unset; an unknown value is an error |
-| `charge` | `0` | Total charge of the system (inferred from SMILES, not overridden) |
-| `multiplicity` | `1` | Spin multiplicity of the system |
+| `charge` | `0` | Total charge of the system (inferred from SMILES, not overridden). Must be an integer |
+| `multiplicity` | `1` | Spin multiplicity of the system. A multiplicity the electron count can't have (e.g. a singlet radical) is an error |
 | `force_convergence_criterion` | `5e-2` | Force convergence threshold (eV/A). Used for both single and batch modes |
-| `energy_convergence_criterion` | `null` | Energy convergence threshold. Batch mode only; force takes precedence if both set |
+| `energy_convergence_criterion` | `null` | Energy convergence threshold (eV): the energy change of one step. Used only when `force_convergence_criterion` is `null`, in both modes |
+| `max_steps` | `10000` | Step limit per structure. A structure that reaches it is returned but marked not converged, and the CLI exits with code 4 |
 
 ### `model`
 
@@ -195,7 +198,7 @@ technical:
 | `model_name` | `"uma-s-1p2p1-ft-d4rev"` | Model identifier (see [Available Models](#available-models)) |
 | `model_modal` | `null` | SevenNet multi-modal fidelity selector. Valid values depend on the checkpoint (`7net-omni`: e.g. `"omol25_high"`, `"omol25_low"`, `"spice"`, `"qcml"`; `7net-mf-ompa`: `"mpa"`, `"omat24"`). Required for multi-modal checkpoints; ignored by single-modal checkpoints and by other backends |
 | `model_path` | `null` | Local checkpoint path (Fairchem and SevenNet; overrides `model_name`). A path that doesn't exist, or one set for ORB, is an error |
-| `model_cache_dir` | `null` | Directory for cached model downloads |
+| `model_cache_dir` | `null` | Directory for cached model downloads (Fairchem only; ORB and SevenNet use their own caches, so setting it for them is an error). A directory that can't be created is an error |
 | `huggingface_token` | `null` | HuggingFace token for model access |
 | `huggingface_token_file` | `null` | File path to read the HF token from |
 | `d3_correction` | `false` | Enable D3 dispersion correction. Supported for the ORB, Fairchem/UMA, and SevenNet backends; rejected for `uma-s-1p2p1-ft-d4rev` |
@@ -207,7 +210,7 @@ technical:
 | Parameter | Default | Description |
 |---|---|---|
 | `max_num_conformers` | `20` | Maximum number of conformers to generate from SMILES |
-| `conformer_seed` | `42` | Random seed for conformer generation |
+| `conformer_seed` | `42` | Random seed for conformer generation, used by every command that embeds SMILES |
 
 ### `technical`
 
@@ -218,8 +221,8 @@ technical:
 | `memory_scaling_factor` | `1.75` | Factor by which the autobatcher grows the probe size during calibration. Larger = faster calibration but coarser final batch size; smaller = slower but tighter. A job runs as one batch without probing only if its forward-pass peak times this factor fits in `max_memory_padding` of free memory. Must be > 1 |
 | `max_atoms_to_try` | `100000` | Upper bound on the autobatcher's calibration probe size (atoms) |
 | `memory_scales_with` | `"auto"` | Per-structure memory metric for batch sizing: `"n_atoms"`, `"n_edges"` or `"auto"`. `"auto"` uses `n_atoms` for UMA, whose large fixed memory per structure makes edge counts overcharge small molecules, and `n_edges` for ORB and SevenNet |
-| `steps_between_swaps` | `1` | Optimization steps between batch swaps in the in-flight autobatcher. `1` is fastest on this codebase's screenings (uma-s/uma-m/orb); higher values are monotonically slower |
-| `logging_level` | `"INFO"` | Logging verbosity: `"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"` |
+| `steps_between_swaps` | `1` | Optimization steps between batch swaps in the in-flight autobatcher. `1` is fastest on this codebase's screenings (uma-s/uma-m/orb); higher values are monotonically slower. Must be at least 1 |
+| `logging_level` | `"INFO"` | Logging verbosity: `"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"`, `"CRITICAL"` |
 
 > You can also control the GPU with the `CUDA_VISIBLE_DEVICES` environment variable.
 

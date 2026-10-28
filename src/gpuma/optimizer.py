@@ -13,11 +13,15 @@ selected automatically from the configuration.
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import json
 import logging
+from math import isfinite
 from typing import Any
 
+import numpy as np
+import torch
 from ase import Atoms
 from ase.optimize import BFGS, FIRE, LBFGS
 
@@ -26,10 +30,11 @@ from .config import (
     VALID_MEMORY_SCALES_WITH,
     Config,
     load_config_from_file,
+    model_label,
     resolve_model_type,
 )
 from .models import _parse_device_string, load_calculator, load_torchsim_model
-from .structure import Structure
+from .structure import Structure, check_spin_state
 from .utils import reporting as _reporting
 from .utils.decorators import timed_block
 from .utils.logging_utils import log_optimization_summary
@@ -86,14 +91,34 @@ def _load_torchsim_cached(key: str) -> Any:
     return load_torchsim_model(_config_from_key(key))
 
 
+def _select_gpu(config: Config) -> None:
+    """Make ``cuda:N`` current; the loaders only select it on a cache miss."""
+    device = _parse_device_string(str(config.technical.device))
+    if device.startswith("cuda:"):
+        torch.cuda.set_device(int(device.split(":")[1]))
+
+
 def _get_cached_calculator(config: Config) -> Any:
     """Return a cached ASE calculator for the given configuration."""
-    return _load_calculator_cached(_cache_key(config))
+    calculator = _load_calculator_cached(_cache_key(config))
+    _select_gpu(config)
+    return calculator
 
 
 def _get_cached_torchsim_model(config: Config) -> Any:
     """Return a cached torch-sim model for the given configuration."""
-    return _load_torchsim_cached(_cache_key(config))
+    model = _load_torchsim_cached(_cache_key(config))
+    _select_gpu(config)
+    return model
+
+
+def _backend_precision(config: Config) -> contextlib.AbstractContextManager:
+    """Scope ORB's TF32 matmuls to its own runs."""
+    if resolve_model_type(config) == "orb":
+        from .models.orb import orb_precision
+
+        return orb_precision()
+    return contextlib.nullcontext()
 
 
 # ---------------------------------------------------------------------------
@@ -101,57 +126,46 @@ def _get_cached_torchsim_model(config: Config) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_force_criterion(config: Config) -> float:
-    """Determine the force convergence threshold for single-structure optimization.
-
-    Single-structure optimization only supports force convergence. If only an
-    energy criterion is set, a warning is logged and the package default force
-    threshold (``DEFAULT_CONFIG["optimization"]["force_convergence_criterion"]``)
-    is used.
-    """
+def _resolve_criterion(config: Config) -> tuple[str, float]:
+    """Return ``("force", eV/Å)`` or ``("energy", eV)``; force wins when both are set."""
     force_crit = config.optimization.force_convergence_criterion
     energy_crit = config.optimization.energy_convergence_criterion
 
     if force_crit is not None and energy_crit is not None:
         logger.warning(
-            "Both force and energy convergence criteria given. "
-            "For single structure optimization, the force criterion is used."
+            "Both force and energy convergence criteria given. Using the force criterion."
         )
-        return float(force_crit)
     if force_crit is not None:
-        return float(force_crit)
+        return "force", float(force_crit)
     if energy_crit is not None:
-        logger.warning(
-            "Energy convergence criterion requested but only force convergence "
-            "is supported for single structure optimization. "
-            "Falling back to default force criterion (%s).",
-            _DEFAULT_FORCE_CRITERION,
-        )
-    return _DEFAULT_FORCE_CRITERION
+        return "energy", float(energy_crit)
+    return "force", _DEFAULT_FORCE_CRITERION
 
 
 def _resolve_batch_convergence(config: Config):
-    """Build a torch-sim convergence function for batch optimization.
-
-    Supports both force and energy convergence criteria. When both are
-    set, force takes precedence.
-    """
+    """Build the torch-sim convergence function for batch optimization."""
     import torch_sim
 
-    force_crit = config.optimization.force_convergence_criterion
-    energy_crit = config.optimization.energy_convergence_criterion
+    criterion, threshold = _resolve_criterion(config)
+    if criterion == "energy":
+        return torch_sim.generate_energy_convergence_fn(energy_tol=threshold)
+    return torch_sim.generate_force_convergence_fn(force_tol=threshold)
 
-    if force_crit is not None and energy_crit is not None:
-        logger.warning(
-            "Both force and energy convergence criteria given. "
-            "Using force convergence criterion for batch optimization."
-        )
-        return torch_sim.generate_force_convergence_fn(force_tol=force_crit)
-    if force_crit is not None:
-        return torch_sim.generate_force_convergence_fn(force_tol=force_crit)
-    if energy_crit is not None:
-        return torch_sim.generate_energy_convergence_fn(energy_tol=energy_crit)
-    return torch_sim.generate_force_convergence_fn(force_tol=_DEFAULT_FORCE_CRITERION)
+
+def _run_ase(
+    optimizer: Any, atoms: Atoms, criterion: str, threshold: float, max_steps: int
+) -> bool:
+    """Run ``optimizer`` until the criterion holds or ``max_steps``; return whether it held."""
+    if criterion == "force":
+        return bool(optimizer.run(fmax=threshold, steps=max_steps))
+    # torch-sim's energy criterion: the energy change of one step is below the threshold.
+    previous = None
+    for _ in optimizer.irun(fmax=0.0, steps=max_steps):
+        energy = atoms.get_potential_energy()
+        if previous is not None and abs(energy - previous) < threshold:
+            return True
+        previous = energy
+    return False
 
 
 _ASE_OPTIMIZER_MAP = {
@@ -215,11 +229,14 @@ def optimize_single_structure(
 
     Raises
     ------
+    ValueError
+        If the charge and multiplicity are impossible for the structure.
     RuntimeError
-        If the optimization fails for any reason.
+        If the optimization fails or ends with a non-finite energy.
     """
     if config is None:
         config = load_config_from_file()
+    check_spin_state(structure.symbols, structure.charge, structure.multiplicity)
 
     try:
         if calculator is None:
@@ -229,7 +246,8 @@ def optimize_single_structure(
         atoms.calc = calculator
         atoms.info = {"charge": structure.charge, "spin": structure.multiplicity}
 
-        fmax = _resolve_force_criterion(config)
+        criterion, threshold = _resolve_criterion(config)
+        max_steps = int(config.optimization.max_steps)
         opt_cls, opt_name = _resolve_ase_optimizer(config)
 
         logger.info(
@@ -239,13 +257,21 @@ def optimize_single_structure(
             opt_name,
         )
         optimizer = opt_cls(atoms, logfile=None)
-        converged = optimizer.run(fmax=fmax)
+        with _backend_precision(config):
+            converged = _run_ase(optimizer, atoms, criterion, threshold, max_steps)
         steps = optimizer.get_number_of_steps()
         logger.info("Optimization completed after %d steps", steps)
-        _reporting._ase_result(converged, steps, opt_name, fmax)
+        _reporting._ase_result(converged, steps, opt_name, criterion, threshold)
 
-        structure.coordinates = atoms.get_positions().tolist()
-        structure.energy = float(atoms.get_potential_energy())
+        energy = float(atoms.get_potential_energy())
+        positions = atoms.get_positions()
+        if not (isfinite(energy) and np.isfinite(positions).all()):
+            raise RuntimeError(f"non-finite energy or coordinates after {steps} steps")
+        if not converged:
+            logger.warning("Structure not converged after %d steps (max_steps)", steps)
+        structure.coordinates = positions.tolist()
+        structure.energy = energy
+        structure.converged = bool(converged)
         _reporting._ase_returned()
         return structure
 
@@ -293,8 +319,8 @@ def optimize_structure_batch(
     Raises
     ------
     ValueError
-        If structures have mismatched symbols/coordinates or are empty,
-        or if the optimization mode is unknown.
+        If structures have mismatched symbols/coordinates, are empty or have an
+        impossible charge and multiplicity, or if the optimization mode is unknown.
     """
     if config is None:
         config = load_config_from_file()
@@ -306,6 +332,10 @@ def optimize_structure_batch(
             raise ValueError(f"Structure {i}: symbols/coords length mismatch")
         if struct.n_atoms == 0:
             raise ValueError(f"Structure {i}: empty structure")
+        try:
+            check_spin_state(struct.symbols, struct.charge, struct.multiplicity)
+        except ValueError as exc:
+            raise ValueError(f"Structure {i}: {exc}") from exc
 
     on_cpu = _parse_device_string(config.technical.device) == "cpu"
     mode = str(config.optimization.batch_optimization_mode).lower()
@@ -320,7 +350,7 @@ def optimize_structure_batch(
                 )
             results = _optimize_sequential(structures, config)
         elif mode == "batch":
-            results = _optimize_batch(structures, config)
+            results = _optimize_batch_or_each(structures, config)
         else:
             raise ValueError(
                 f"Unknown optimization mode: {mode!r}. Use 'sequential' or 'batch' "
@@ -365,6 +395,31 @@ def _optimize_sequential(
         n_ok,
         len(structures),
     )
+    return results
+
+
+def _optimize_batch_or_each(
+    structures: list[Structure],
+    config: Config,
+) -> list[Structure | None]:
+    """Run one batch; if it raises, retry each structure alone so one input can't fail all."""
+    if len(structures) == 1:
+        return _optimize_batch(structures, config)
+    _get_cached_torchsim_model(config)  # a model that won't load fails the run once
+    try:
+        return _optimize_batch(structures, config)
+    except Exception as exc:
+        logger.warning(
+            "Batch optimization failed (%s); retrying the %d structures one at a time",
+            exc,
+            len(structures),
+        )
+    results: list[Structure | None] = [None] * len(structures)
+    for i, struct in enumerate(structures):
+        try:
+            results[i] = _optimize_batch([struct], config, input_indices=[i])[0]
+        except Exception as exc:
+            logger.warning("Structure %d optimization failed: %s", i + 1, exc)
     return results
 
 
@@ -427,8 +482,12 @@ def _memory_scales_with(config: Config) -> str:
 def _optimize_batch(
     structures: list[Structure],
     config: Config,
+    input_indices: list[int] | None = None,
 ) -> list[Structure | None]:
-    """Optimize structures in parallel using torch-sim batch inference."""
+    """Optimize structures in parallel using torch-sim batch inference.
+
+    ``input_indices`` maps positions in ``structures`` to the caller's inputs for reporting.
+    """
     import torch
     import torch._inductor.config as inductor_config
     import torch_sim
@@ -486,6 +545,7 @@ def _optimize_batch(
     memory_scaling_factor = float(config.technical.memory_scaling_factor)
     max_atoms_to_try = int(config.technical.max_atoms_to_try)
     steps_between_swaps = int(config.technical.steps_between_swaps)
+    max_steps = int(config.optimization.max_steps)
 
     # torch-sim measures every system's edge count over the whole state at once;
     # the chunked pass keeps that under the device's free memory.
@@ -510,9 +570,22 @@ def _optimize_batch(
         steps_between_swaps,
     )
 
+    # torch-sim reports a system stopped at max_steps as converged; keep the criterion's verdict.
+    converged = [False] * len(structures)
+    criterion_fn = convergence_fn
+
+    def tracked(state: Any, last_energy: Any) -> Any:
+        mask = criterion_fn(state, last_energy)
+        for i, ok in zip(batcher.current_idx, mask.tolist(), strict=True):
+            converged[i] = ok
+        return mask
+
     # torch 2.13 tunes pointwise kernels at run time and, on a nearly full GPU, copies
     # their buffers to pinned host memory; that allocation can fail and crash the probe.
-    with inductor_config.patch({"triton.autotune_pointwise": False}):
+    with (
+        inductor_config.patch({"triton.autotune_pointwise": False}),
+        _backend_precision(config),
+    ):
         # A job that fits runs as one batch, so the probe is skipped. Otherwise
         # torch_sim.optimize probes on the OptimState itself; no load_states() here,
         # which would pin the ceiling to the bare SimState.
@@ -520,7 +593,10 @@ def _optimize_batch(
             batcher.max_memory_scaler = _whole_job_memory_scaler(batched_state, model, batcher)
 
         with timed_block("Optimization"):
-            observation = _reporting._observe_criterion(batcher, len(structures), convergence_fn)
+            convergence_fn = tracked
+            observation = _reporting._observe_criterion(
+                batcher, len(structures), convergence_fn, input_indices
+            )
             observer = None
             if observation is not None:
                 observer, convergence_fn = observation
@@ -531,6 +607,7 @@ def _optimize_batch(
                     optimizer=optimizer,
                     convergence_fn=convergence_fn,
                     autobatcher=batcher,
+                    max_steps=max_steps,
                     steps_between_swaps=steps_between_swaps,
                 )
             except BaseException:
@@ -544,21 +621,44 @@ def _optimize_batch(
 
     # Extract results
     final_atoms = final_state.to_atoms()
-    # The torch-sim model wrapper does not carry a ``model_name`` attribute, so
-    # resolve the name from the configuration (the source of truth used by the
-    # run summary) instead of the model object, which always read "unknown".
-    model_name = getattr(config.model, "model_name", None) or "unknown"
-    results: list[Structure] = []
+    label = model_label(config)
+    indices = input_indices or list(range(len(structures)))
+    results: list[Structure | None] = []
     for i, atoms in enumerate(final_atoms):
-        struct = Structure(
-            symbols=atoms.get_chemical_symbols(),
-            coordinates=atoms.get_positions().tolist(),
-            energy=float(final_state.energy[i].item()),
-            charge=int(final_state.charge[i].item()),
-            multiplicity=int(final_state.spin[i].item()),
-            comment=f"Optimized with model {model_name} in batch mode",
+        energy = float(final_state.energy[i].item())
+        positions = atoms.get_positions()
+        if not (isfinite(energy) and np.isfinite(positions).all()):
+            logger.warning("Structure %d: non-finite energy or coordinates", indices[i] + 1)
+            results.append(None)
+            _reporting._emit(
+                "mlip_optimize", "optimization_returned", input_index=indices[i], optimized=False
+            )
+            continue
+        results.append(
+            Structure(
+                symbols=atoms.get_chemical_symbols(),
+                coordinates=positions.tolist(),
+                energy=energy,
+                charge=int(final_state.charge[i].item()),
+                multiplicity=int(final_state.spin[i].item()),
+                comment=f"Optimized with model {label} in batch mode",
+                metadata=dict(structures[i].metadata),
+                converged=converged[i],
+            )
         )
-        results.append(struct)
-        _reporting._emit("mlip_optimize", "optimization_returned", input_index=i,
-                         output_index=i, optimized=True)
+        _reporting._emit(
+            "mlip_optimize",
+            "optimization_returned",
+            input_index=indices[i],
+            output_index=indices[i],
+            optimized=True,
+        )
+    n_unconverged = converged.count(False)
+    if n_unconverged:
+        logger.warning(
+            "%d of %d structures did not converge within %d steps (max_steps)",
+            n_unconverged,
+            len(structures),
+            max_steps,
+        )
     return results

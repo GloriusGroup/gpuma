@@ -28,20 +28,63 @@ class TestConvergenceWarnings:
             optimize_single_structure(methane, config)
         assert "Both force and energy convergence criteria given" in caplog.text
 
-    def test_energy_only_criterion_warns(self, methane, caplog):
-        """Energy-only convergence warns and falls back to default force."""
-        config = Config({
-            "optimization": {
-                "force_convergence_criterion": None,
-                "energy_convergence_criterion": 0.001,
-            },
-            "model": {"model_type": "orb", "model_name": "orb_v3_direct_omol"},
-            "technical": {"device": DEVICE},
-        })
-        with caplog.at_level(logging.WARNING):
-            result = optimize_single_structure(methane, config)
-        assert "Energy convergence criterion requested" in caplog.text
-        assert result.energy is not None
+    def test_energy_only_criterion_is_used(self, methane):
+        """The ASE path used to swap an energy criterion for the default force one."""
+        events = _ase_criterion(methane, energy_convergence_criterion=10.0)
+        assert (events.criterion, events.threshold_unit) == ("energy", "eV")
+        # A 10 eV tolerance is met by the first step; the force default needs more.
+        assert events.converged and events.steps == 1
+
+
+def _ase_criterion(structure, **optimization):
+    """Optimize ``structure`` on the ASE path and return its criterion_result event."""
+    from gpuma.utils.reporting import diagnostic_report
+
+    config = Config({
+        "optimization": {"force_convergence_criterion": None, **optimization},
+        "model": {"model_type": "orb", "model_name": "orb_v3_direct_omol"},
+        "technical": {"device": DEVICE},
+    })
+    with diagnostic_report() as report:
+        optimize_single_structure(structure, config)
+    return next(e for e in report.events if e.reason == "criterion_result")
+
+
+class TestStepLimit:
+    """max_steps caps the ASE path, which used to run without limit."""
+
+    def test_step_limit_marks_unconverged(self, ethanol):
+        events = _ase_criterion(ethanol, force_convergence_criterion=1e-6, max_steps=2)
+        assert not events.converged and events.steps == 2
+        assert ethanol.converged is False
+
+    def test_converged_flag(self, methane):
+        _ase_criterion(methane, force_convergence_criterion=0.5)
+        assert methane.converged is True
+
+    def test_non_finite_energy_is_a_failure(self, methane):
+        """NaN must not reach the output file or the JSON summary."""
+        import numpy as np
+        from ase.calculators.calculator import Calculator, all_changes
+
+        class NaNCalc(Calculator):
+            implemented_properties = ["energy", "forces"]
+
+            def calculate(self, atoms=None, properties=None, system_changes=all_changes):
+                super().calculate(atoms, properties, system_changes)
+                self.results = {"energy": float("nan"), "forces": np.zeros((len(atoms), 3))}
+
+        config = Config({"technical": {"device": "cpu"}})
+        with pytest.raises(RuntimeError, match="non-finite"):
+            optimize_single_structure(methane, config, NaNCalc())
+
+    def test_impossible_spin_state_is_rejected(self):
+        h3 = Structure(
+            symbols=["H"] * 3, coordinates=[(0.0, 0.0, float(i)) for i in range(3)],
+            charge=0, multiplicity=1,
+        )
+        with pytest.raises(ValueError, match="multiplicity"):
+            optimize_single_structure(h3, Config({"technical": {"device": "cpu"}}))
 
 
 class TestConvergenceBehavior:

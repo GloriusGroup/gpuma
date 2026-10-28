@@ -144,6 +144,15 @@ def optimize_ensemble_smiles(
             conformers are not valid.
 
     """
+    return _optimize_ensemble_smiles(smiles, output_file, config)[0]
+
+
+def _optimize_ensemble_smiles(
+    smiles: str,
+    output_file: str | None = None,
+    config: Config | None = None,
+) -> tuple[list[Structure], int]:
+    """As :func:`optimize_ensemble_smiles`, plus the number of conformers generated."""
     if config is None:
         config = load_config_from_file()
     multiplicity = int(config.optimization.multiplicity)
@@ -164,13 +173,13 @@ def optimize_ensemble_smiles(
     # conformer that failed to optimize must not renumber the ones after it.
     optimized = [(i, s) for i, s in enumerate(results) if s is not None]
 
-    if output_file:
+    if output_file and optimized:
         comments = [
             f"Optimized conformer {i + 1} from SMILES: {smiles}" for i, _ in optimized
         ]
         save_multi_xyz([s for _, s in optimized], output_file, comments)
 
-    return [s for _, s in optimized]
+    return [s for _, s in optimized], len(conformers)
 
 
 def optimize_batch_multi_xyz_file(
@@ -218,7 +227,7 @@ def optimize_batch_multi_xyz_file(
     # leaves a gap rather than shifting every later label onto the wrong input.
     optimized = [(i, s) for i, s in enumerate(results) if s is not None]
 
-    if output_file:
+    if output_file and optimized:
         comments = [
             f"Optimized structure {i + 1} from: {input_file}" for i, _ in optimized
         ]
@@ -266,9 +275,9 @@ def optimize_batch_xyz_directory(
     # Numbered by position in the directory listing; see the note above.
     optimized = [(i, s) for i, s in enumerate(results) if s is not None]
 
-    if output_file:
+    if output_file and optimized:
         comments = [
-            f"Optimized structure {i + 1} from batch input" for i, _ in optimized
+            f"Optimized from: {structures[i].metadata['source_file']}" for i, _ in optimized
         ]
         save_multi_xyz([s for _, s in optimized], output_file, comments)
 

@@ -41,7 +41,7 @@ def install_skill(targets: Sequence[Path] | None = None, force: bool = False) ->
             elif dest.exists():
                 shutil.rmtree(dest)
             shutil.copytree(source, dest, ignore=shutil.ignore_patterns("__pycache__"))
-            (dest / VERSION_FILE).write_text(f"{gpuma_version()}\n")
+            (dest / VERSION_FILE).write_text(f"{gpuma_version() or 'unknown'}\n")
     return dests
 
 

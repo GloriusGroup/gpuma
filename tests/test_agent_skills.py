@@ -73,3 +73,11 @@ def test_cli_skills_ignores_broken_config_in_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "config.json").write_text('{"optimization": {"batch_optimizer": "nope"}}')
     assert main(["skills", "install", "--target", str(tmp_path / "t")]) == 0
+
+
+def test_install_without_package_metadata_writes_unknown(tmp_path, monkeypatch):
+    import gpuma.agent_skills as agent_skills
+
+    monkeypatch.setattr(agent_skills, "gpuma_version", lambda: None)
+    [d] = install_skill([tmp_path])
+    assert (d / VERSION_FILE).read_text().strip() == "unknown"
