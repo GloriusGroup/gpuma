@@ -192,8 +192,8 @@ When a run is started from SMILES, an RDKit/MMFF force field (via nvMolKit on GP
   `model_modal` fidelity (see [docs/config.md](docs/config.md)).
 - D3 dispersion correction: off by default. Set `"d3_correction": true` to
   enable DFT-D3(BJ) for models trained without dispersion. It is rejected for
-  `uma-s-1p2p1-ft-d4rev` and logs a warning for the other UMA models and ORB
-  `*_omol` models (see [docs/config.md](docs/config.md)).
+  `uma-s-1p2p1-ft-d4rev` and logs a warning for the other UMA models, ORB
+  `*_omol` models and SevenNet `omol25_*` modals (see [docs/config.md](docs/config.md)).
 
 ## License
 MIT License (see LICENSE)

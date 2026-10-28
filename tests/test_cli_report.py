@@ -246,6 +246,44 @@ def test_dry_run_rechecks_d3_after_model_type_override(tmp_path, monkeypatch, ca
     assert "already includes dispersion" in json.loads(capsys.readouterr().out)["error"]["message"]
 
 
+@pytest.mark.parametrize("name", ["uma-s-1p2p1-ft-r2scan", "esen-sm-conserving-all-oc25"])
+def test_dry_run_rejects_fairchem_model_without_omol(tmp_path, monkeypatch, capsys, name):
+    """gpuma runs the omol task only, so fairchem models without it are rejected."""
+    _forbid_api(monkeypatch)
+    cfg = _write_config(tmp_path, model_type="fairchem", model_name=name)
+    argv = ["optimize", "--smiles", "CCO", "-o", "o.xyz", "-c", cfg, "--dry-run", "--json"]
+    assert main(argv) == 3
+    assert "Unsupported fairchem model_name" in json.loads(capsys.readouterr().out)["error"][
+        "message"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (["convert", "--smiles", "C", "-o", "o.xyz", "--dry-run", "--json"], "--dry-run"),
+        (["optimize", "--smiles", "C", "-o", "o.xyz", "-c", "/no/such.json", "--json"],
+         "config file not found"),
+        (["optimize", "--json"], "required"),
+    ],
+)
+def test_json_usage_error_prints_one_summary(capsys, argv, message):
+    """Usage errors exit 2 and still print exactly one JSON object with --json."""
+    with pytest.raises(SystemExit) as exc_info:
+        main(argv)
+    assert exc_info.value.code == 2
+    s = json.loads(capsys.readouterr().out)
+    assert s["exit_code"] == 2 and s["status"] == "error"
+    assert s["error"]["type"] == "UsageError" and message in s["error"]["message"]
+    assert s["command"] == argv[0]
+
+
+def test_usage_error_without_json_prints_nothing_to_stdout(capsys):
+    with pytest.raises(SystemExit):
+        main(["optimize", "--smiles", "C", "-o", "o.xyz", "-c", "/no/such.json"])
+    assert capsys.readouterr().out == ""
+
+
 def test_library_value_error_is_runtime_failure(tmp_path, monkeypatch, capsys):
     _fake_batch(monkeypatch, 1, effect=lambda: int("not a number"))
     assert main(_batch_argv(tmp_path, "--json")) == 1

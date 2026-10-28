@@ -26,6 +26,13 @@ logger = logging.getLogger(__name__)
 _INFERENCE_SETTINGS = "batch"
 
 
+def _require_omol(predictor: Any) -> None:
+    """Raise unless the model has the omol task, the only one gpuma runs."""
+    tasks = sorted(predictor.dataset_to_tasks)
+    if "omol" not in tasks:
+        raise ValueError(f"This fairchem model has no omol task (tasks: {tasks}); gpuma needs omol")
+
+
 def _load_fairchem_calculator(config: Config) -> Any:
     """Load a ``FAIRChemCalculator`` from a pretrained UMA model.
 
@@ -43,6 +50,7 @@ def _load_fairchem_calculator(config: Config) -> Any:
         predictor = pretrained_mlip.load_predict_unit(
             path=model_path, device=backend_device, inference_settings=_INFERENCE_SETTINGS
         )
+        _require_omol(predictor)
         calc = FAIRChemCalculator(predict_unit=predictor, task_name="omol")
     else:
         model_name, model_cache_dir = _verify_model_name_and_cache_dir(config)
@@ -50,6 +58,7 @@ def _load_fairchem_calculator(config: Config) -> Any:
         if model_cache_dir:
             kwargs["cache_dir"] = str(model_cache_dir)
         predictor = pretrained_mlip.get_predict_unit(model_name, **kwargs)
+        _require_omol(predictor)
         calc = FAIRChemCalculator(predict_unit=predictor, task_name="omol")
 
     if config.model.d3_correction:
@@ -93,6 +102,8 @@ def _load_fairchem_torchsim(config: Config) -> Any:
             task_name="omol",
             device=torch_device,
         )
+
+    _require_omol(uma_model.predictor)
 
     if config.model.d3_correction:
         from torch_sim.models.interface import SumModel  # type: ignore

@@ -334,7 +334,7 @@ def smiles_to_xyz(
     if return_full_xyz_str:
         xyz_lines = [str(struct.n_atoms)]
         xyz_lines.append(
-            f"Generated from SMILES using MORFEUS | "
+            "Generated from SMILES | "
             f"Charge: {struct.charge} | "
             f"Multiplicity: {struct.multiplicity}"
         )

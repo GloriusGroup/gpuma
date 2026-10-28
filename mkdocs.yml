@@ -4,7 +4,7 @@ site_author: "Niklas Hölter"
 site_url: "https://NiklasHoelter.github.io/gpuma/"
 repo_url: https://github.com/NiklasHoelter/gpuma
 repo_name: NiklasHoelter/gpuma
-edit_uri: edit/main/docs/ # Allows users to suggest edits directly via GitHub
+edit_uri: edit/master/docs/ # Allows users to suggest edits directly via GitHub
 
 theme:
   name: "material"

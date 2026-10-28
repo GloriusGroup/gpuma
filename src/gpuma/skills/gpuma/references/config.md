@@ -40,8 +40,8 @@ them for molecules.
 `model.d3_correction` adds a D3 dispersion correction. Leave it `false` for UMA
 and the ORB OMol models: their training data already includes dispersion, so D3
 would count it twice. gpuma rejects it for the default `uma-s-1p2p1-ft-d4rev`
-(ωB97M-D4rev) and logs a warning for the ωB97M-V models. Consider it only for
-SevenNet models trained on PBE data.
+(ωB97M-D4rev) and logs a warning for the ωB97M-V models, including SevenNet's
+`omol25_*` modals. Consider it only for SevenNet models trained on PBE data.
 
 ## Memory and batching
 
