@@ -6,7 +6,9 @@ from typing import Any
 
 from .config import (
     DEFAULT_CONFIG,
+    VALID_BATCH_MODES,
     VALID_BATCH_OPTIMIZERS,
+    VALID_LOGGING_LEVELS,
     VALID_MEMORY_SCALES_WITH,
     VALID_MODEL_TYPES,
 )
@@ -14,9 +16,9 @@ from .config import (
 _ENUMS: dict[tuple[str, str], list[str]] = {
     ("model", "model_type"): sorted(VALID_MODEL_TYPES),
     ("optimization", "batch_optimizer"): sorted(VALID_BATCH_OPTIMIZERS),
-    ("optimization", "batch_optimization_mode"): ["batch", "sequential"],
+    ("optimization", "batch_optimization_mode"): sorted(VALID_BATCH_MODES),
     ("technical", "memory_scales_with"): sorted(VALID_MEMORY_SCALES_WITH),
-    ("technical", "logging_level"): ["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"],
+    ("technical", "logging_level"): list(VALID_LOGGING_LEVELS),
 }
 
 # Keys whose default is None but whose value is not a string.
@@ -31,6 +33,8 @@ _PATTERNS: dict[tuple[str, str], str] = {
 _BOUNDS: dict[tuple[str, str], dict[str, float]] = {
     ("technical", "memory_scaling_factor"): {"exclusiveMinimum": 1},
     ("technical", "max_memory_padding"): {"minimum": 0.05, "maximum": 0.95},
+    ("technical", "steps_between_swaps"): {"minimum": 1},
+    ("optimization", "max_steps"): {"minimum": 1},
 }
 
 

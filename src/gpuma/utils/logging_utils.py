@@ -63,7 +63,7 @@ def log_optimization_summary(
         Configuration used for the run.
 
     """
-    from ..config import resolve_model_type
+    from ..config import model_label, resolve_model_type
 
     n_input = len(input_structures)
     optimized = [s for s in results if s is not None]
@@ -71,7 +71,8 @@ def log_optimization_summary(
     energies = [s.energy for s in optimized if s.energy is not None]
     atom_counts = [s.n_atoms for s in optimized]
 
-    model_name = getattr(config.model, "model_name", "unknown")
+    model_name = model_label(config)
+    n_unconverged = sum(s.converged is False for s in optimized)
     model_type = resolve_model_type(config)
     device = str(config.technical.device)
 
@@ -95,6 +96,8 @@ def log_optimization_summary(
             f"  Success rate:        {n_output}/{n_input}"
             f" ({100 * n_output / n_input:.1f}%)"
         )
+    if n_unconverged:
+        lines.append(f"  Not converged:       {n_unconverged} (max_steps reached)")
     lines.append(f"  Total time:          {total_time:.2f} sec")
     if n_output > 0:
         lines.append(f"  Avg time/structure:  {total_time / n_output:.3f} sec")

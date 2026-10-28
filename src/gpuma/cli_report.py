@@ -57,6 +57,7 @@ def structure_record(index: int, s: Structure) -> dict[str, Any]:
         "multiplicity": s.multiplicity,
         "energy_ev": s.energy,
         "comment": s.comment,
+        "converged": s.converged,
     }
 
 
@@ -103,7 +104,11 @@ def build_summary(
         "output_file": result.output_file,
         "device": _resolved_device(config) if config is not None else None,
         "model": (
-            {"type": config.model.model_type, "name": config.model.model_name}
+            {
+                "type": config.model.model_type,
+                "name": config.model.model_name,
+                "path": config.model.get("model_path"),
+            }
             if config is not None
             else None
         ),

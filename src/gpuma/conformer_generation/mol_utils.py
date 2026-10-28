@@ -60,7 +60,7 @@ def _to_coord_list(coords) -> list[tuple[float, float, float]]:
 def smiles_to_conformer_ensemble(
     smiles: str,
     max_num_confs: int = 5,
-    multiplicity: int = 1,
+    multiplicity: int | None = None,
     seed: int | None = None,
     config: "Config | None" = None,
 ) -> list[Structure]:
@@ -80,12 +80,9 @@ def smiles_to_conformer_ensemble(
     max_num_confs:
         Maximum number of conformers to return (default: ``5``).
     multiplicity:
-        Spin multiplicity to set on all generated conformers (default: ``1``).
+        Spin multiplicity of the conformers; ``None`` takes it from ``config``.
     seed:
-        Optional random seed for reproducible conformer generation. This is now
-        passed through to the embedding itself; previously it only seeded the
-        Python and NumPy RNGs, which RDKit does not consult, so it had no
-        effect on the generated geometries.
+        Random seed for the embedding; ``None`` takes ``conformer_seed`` from ``config``.
     config:
         gpuma configuration, used for device selection. Loaded from the default
         location if omitted.
@@ -117,14 +114,20 @@ def smiles_to_conformer_ensemble(
     try:
         # Imported here rather than at module scope: embed imports this module's
         # coordinate helpers, so a top-level import would be circular.
-        from .embed import DEFAULT_SEED, generate_ensembles
+        from .embed import generate_ensembles
+
+        if seed is None:
+            from ..config import load_config_from_file
+
+            config = config if config is not None else load_config_from_file()
+            seed = int(config.conformer_generation.conformer_seed)
 
         ensembles = generate_ensembles(
             [smiles.strip()],
             max_num_confs=max_num_confs,
             config=config,
             multiplicity=multiplicity,
-            seed=DEFAULT_SEED if seed is None else seed,
+            seed=seed,
         )
         structures = ensembles[0]
 

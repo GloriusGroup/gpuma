@@ -19,12 +19,33 @@ from ..conformer_generation import (
 from ..conformer_generation import (
     smiles_to_structure as _smiles_to_structure_util,
 )
-from ..structure import Structure
+from ..structure import Structure, check_spin_state
 
 if TYPE_CHECKING:  # pragma: no cover - annotation only, avoids importing torch
     from ..config import Config
 
 logger = logging.getLogger(__name__)
+
+# The state gpuma writes into every XYZ comment line (see save_xyz_file).
+_STATE_RE = re.compile(r"\| Charge: (-?\d+) \| Multiplicity: (\d+)")
+
+
+def _state_from_comment(comment: str, charge: int, multiplicity: int) -> tuple[int, int]:
+    """Return the charge and multiplicity gpuma wrote into ``comment``, else the given ones."""
+    found = _STATE_RE.findall(comment)
+    if not found:
+        return charge, multiplicity
+    return int(found[-1][0]), int(found[-1][1])
+
+
+def _warn_state_override(where: str, found: tuple[int, int], given: tuple[int, int]) -> None:
+    if found != given:
+        logger.warning(
+            "%s: using Charge %d and Multiplicity %d from the comment line instead of %d and %d",
+            where,
+            *found,
+            *given,
+        )
 
 
 def read_xyz(file_path: str, charge: int = 0, multiplicity: int = 1) -> Structure:
@@ -102,12 +123,14 @@ def read_xyz(file_path: str, charge: int = 0, multiplicity: int = 1) -> Structur
             raise
         raise ValueError(f"Error reading XYZ file: {exc}") from exc
 
+    state = _state_from_comment(comment, charge, multiplicity)
+    _warn_state_override(file_path, state, (charge, multiplicity))
     return Structure(
         symbols=symbols,
         coordinates=coordinates,
         comment=comment,
-        charge=charge,
-        multiplicity=multiplicity,
+        charge=state[0],
+        multiplicity=state[1],
     )
 
 
@@ -139,84 +162,70 @@ def read_multi_xyz(file_path: str, charge: int = 0, multiplicity: int = 1) -> li
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File {file_path} not found")
 
-    structures: list[Structure] = []
-
     try:
         with open(file_path, encoding="utf-8") as infile:
-            line_iterator = iter(infile)
-            while True:
-                try:
-                    line = next(line_iterator)
-                except StopIteration:
-                    break
-
-                line_stripped = line.strip()
-                if not line_stripped:
-                    continue
-
-                try:
-                    num_atoms = int(line_stripped)
-                except ValueError:
-                    continue
-
-                try:
-                    comment_line = next(line_iterator)
-                    comment = comment_line.rstrip("\n")
-                except StopIteration:
-                    break
-
-                symbols: list[str] = []
-                coordinates: list[tuple[float, float, float]] = []
-
-                valid = True
-                for atom_idx in range(num_atoms):
-                    try:
-                        atom_line = next(line_iterator)
-                    except StopIteration:
-                        logger.warning(
-                            "Structure '%s': unexpected end of file at atom %d/%d, skipping",
-                            comment, atom_idx + 1, num_atoms,
-                        )
-                        valid = False
-                        break
-
-                    parts = atom_line.split()
-                    if len(parts) < 4:
-                        logger.warning(
-                            "Structure '%s': malformed atom line %d, skipping structure",
-                            comment, atom_idx + 1,
-                        )
-                        valid = False
-                        break
-
-                    symbol = parts[0]
-                    try:
-                        x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
-                    except ValueError:
-                        logger.warning(
-                            "Structure '%s': invalid coordinates at atom %d, skipping structure",
-                            comment, atom_idx + 1,
-                        )
-                        valid = False
-                        break
-                    symbols.append(symbol)
-                    coordinates.append((x, y, z))
-
-                if valid and len(symbols) == num_atoms:
-                    structures.append(
-                        Structure(
-                            symbols=symbols,
-                            coordinates=coordinates,
-                            comment=comment,
-                            charge=charge,
-                            multiplicity=multiplicity,
-                        )
-                    )
-
-    except Exception as exc:
+            lines = infile.read().splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
         raise ValueError(f"Error reading multi-XYZ file: {exc}") from exc
 
+    structures: list[Structure] = []
+    overridden: list[tuple[int, int]] = []
+    i = 0
+    while i < len(lines):
+        if not lines[i].strip():
+            i += 1
+            continue
+        where = f"{file_path}: structure {len(structures) + 1} (line {i + 1})"
+        try:
+            num_atoms = int(lines[i].strip())
+        except ValueError:
+            raise ValueError(f"{where}: expected an atom count, got {lines[i]!r}") from None
+        if num_atoms < 0:
+            raise ValueError(f"{where}: negative atom count {num_atoms}")
+        if i + 1 >= len(lines):
+            raise ValueError(f"{where}: missing comment line")
+        comment = lines[i + 1]
+        atom_lines = lines[i + 2 : i + 2 + num_atoms]
+        if len(atom_lines) < num_atoms:
+            raise ValueError(
+                f"{where}: expected {num_atoms} atom lines, file ends after {len(atom_lines)}"
+            )
+
+        symbols: list[str] = []
+        coordinates: list[tuple[float, float, float]] = []
+        for offset, line in enumerate(atom_lines):
+            parts = line.split()
+            try:
+                if len(parts) < 4:
+                    raise ValueError
+                x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
+            except ValueError:
+                raise ValueError(
+                    f"{where}: line {i + 3 + offset} is not 'symbol x y z': {line!r}"
+                ) from None
+            symbols.append(parts[0])
+            coordinates.append((x, y, z))
+
+        state = _state_from_comment(comment, charge, multiplicity)
+        if state != (charge, multiplicity):
+            overridden.append(state)
+        structures.append(
+            Structure(
+                symbols=symbols,
+                coordinates=coordinates,
+                comment=comment,
+                charge=state[0],
+                multiplicity=state[1],
+            )
+        )
+        i += 2 + num_atoms
+
+    if overridden:
+        _warn_state_override(
+            f"{file_path} ({len(overridden)} structures)", overridden[0], (charge, multiplicity)
+        )
     return structures
+
 
 def natural_sort_key(filepath: str) -> list:
     """
@@ -265,7 +274,7 @@ def read_xyz_directory(
     FileNotFoundError
         If the directory does not exist.
     ValueError
-        If no valid XYZ files are found.
+        If no XYZ files are found or one cannot be read.
 
     """
     if not os.path.exists(directory_path):
@@ -281,20 +290,17 @@ def read_xyz_directory(
         xyz_files = list(xyz_files)
 
     structures: list[Structure] = []
-    found_any = False
 
     for xyz_file in xyz_files:
-        found_any = True
         try:
-            structures.append(read_xyz(xyz_file, charge=charge, multiplicity=multiplicity))
-        except Exception as exc:  # pragma: no cover - logged and skipped
-            logger.warning("Failed to read %s: %s", xyz_file, exc)
-
-    if not found_any:
-        raise ValueError(f"No XYZ files found in directory {directory_path}")
+            structure = read_xyz(xyz_file, charge=charge, multiplicity=multiplicity)
+        except ValueError as exc:
+            raise ValueError(f"Failed to read {xyz_file}: {exc}") from exc
+        structure.metadata["source_file"] = xyz_file
+        structures.append(structure)
 
     if not structures:
-        raise ValueError("No valid structures could be read from any XYZ files")
+        raise ValueError(f"No XYZ files found in directory {directory_path}")
 
     return structures
 
@@ -315,7 +321,7 @@ def smiles_to_xyz(
         If ``True``, return an XYZ-format string instead of a
         :class:`Structure` instance.
     multiplicity:
-        Optional spin multiplicity to set on the structure (default: ``None``).
+        Spin multiplicity of the structure; ``None`` takes it from ``config``.
 
     Returns
     -------
@@ -330,6 +336,7 @@ def smiles_to_xyz(
     struct = _smiles_to_structure_util(smiles_string.strip(), config=config)
     if multiplicity is not None:
         struct.multiplicity = int(multiplicity)
+    check_spin_state(struct.symbols, struct.charge, struct.multiplicity)
 
     if return_full_xyz_str:
         xyz_lines = [str(struct.n_atoms)]
@@ -366,9 +373,9 @@ def smiles_to_ensemble(
     max_num_confs:
         Maximum number of conformers to generate.
     multiplicity:
-        Optional spin multiplicity to set on the structures (default: ``None``).
+        Spin multiplicity of the structures; ``None`` takes it from ``config``.
     seed:
-        Optional random seed for reproducible conformer generation.
+        Random seed for the embedding; ``None`` takes ``conformer_seed`` from ``config``.
 
     Returns
     -------
@@ -379,10 +386,14 @@ def smiles_to_ensemble(
     if not smiles_string or not smiles_string.strip():
         raise ValueError("SMILES string cannot be empty or None")
 
-    mult = int(multiplicity) if multiplicity is not None else 1
     structs = _smiles_to_ensemble_util(
-        smiles_string.strip(), max_num_confs, multiplicity=mult, seed=seed, config=config,
+        smiles_string.strip(),
+        max_num_confs,
+        multiplicity=multiplicity,
+        seed=seed,
+        config=config,
     )
+    check_spin_state(structs[0].symbols, structs[0].charge, structs[0].multiplicity)
     return structs
 
 
@@ -405,6 +416,8 @@ def save_xyz_file(structure: Structure, file_path: str) -> None:
     energy_part = ""
     if structure.energy is not None:
         energy_part = f" | Energy: {structure.energy:.6f} eV"
+    if structure.converged is False:
+        energy_part += " | Not converged"
     state_part = f" | Charge: {structure.charge} | Multiplicity: {structure.multiplicity}"
     comment = (base_comment + energy_part + state_part).strip() or "Structure"
     lines.append(comment)
@@ -450,6 +463,8 @@ def save_multi_xyz(
         energy_part = ""
         if struct.energy is not None:
             energy_part = f" | Energy: {struct.energy:.6f} eV"
+        if struct.converged is False:
+            energy_part += " | Not converged"
         state_part = f" | Charge: {struct.charge} | Multiplicity: {struct.multiplicity}"
         comment = (base_comment + energy_part + state_part).strip() or f"Structure {idx + 1}"
         lines.append(comment)

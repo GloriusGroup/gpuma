@@ -54,7 +54,7 @@ def test_json_summary_on_success(tmp_path, monkeypatch, capsys):
     assert s["n_input"] == N_MULTI and s["n_returned"] == N_MULTI
     assert s["structures"][0].keys() >= {"index", "energy_ev", "n_atoms"}
     assert s["diagnostics"]["schema_version"] == 1
-    assert s["model"] == {"type": "orb", "name": "orb_v3_direct_omol"}
+    assert s["model"] == {"type": "orb", "name": "orb_v3_direct_omol", "path": None}
     assert s["device"] == "cpu"
 
 
@@ -135,7 +135,7 @@ def _forbid_api(monkeypatch):
         raise AssertionError("dry run must not call the optimization API")
 
     for name in (
-        "optimize_single_smiles", "optimize_single_xyz_file", "optimize_ensemble_smiles",
+        "optimize_single_smiles", "optimize_single_xyz_file", "_optimize_ensemble_smiles",
         "optimize_batch_multi_xyz_file", "optimize_batch_xyz_directory",
     ):
         monkeypatch.setattr(cli, name, forbidden)
@@ -297,3 +297,92 @@ def test_gpuma_value_error_is_invalid_input():
     with pytest.raises(ValueError) as exc_info:
         _parse_device_string("tpu")
     assert exit_code_for(exc_info.value) == 3
+
+
+# ---------------------------------------------------------------------------
+# Spin state, convergence and partial results
+# ---------------------------------------------------------------------------
+
+
+def test_dry_run_rejects_radical_as_singlet(tmp_path, monkeypatch, capsys):
+    _forbid_api(monkeypatch)
+    argv = ["optimize", "--smiles", "[CH3]", "-o", "o.xyz", "-c", _write_config(tmp_path),
+            "--dry-run", "--json"]
+    assert main(argv) == 3
+    assert "multiplicity" in json.loads(capsys.readouterr().out)["error"]["message"]
+    assert main([*argv, "--multiplicity", "2"]) == 0
+
+
+def test_dry_run_rejects_impossible_spin_in_batch(tmp_path, monkeypatch, capsys):
+    _forbid_api(monkeypatch)
+    h3 = tmp_path / "h3.xyz"
+    h3.write_text("3\nH3\nH 0 0 0\nH 1 0 0\nH 2 0 0\n")
+    assert main(_batch_argv(tmp_path, "--dry-run", "--json", input_file=h3)) == 3
+    assert "structure 1" in json.loads(capsys.readouterr().out)["error"]["message"]
+
+
+def test_unconverged_batch_is_partial(tmp_path, monkeypatch, capsys):
+    def fake(input_file, output_file=None, config=None):
+        structures = [_he(-float(i)) for i in range(N_MULTI)]
+        structures[0].converged = False
+        return structures
+
+    monkeypatch.setattr(cli, "optimize_batch_multi_xyz_file", fake)
+    assert main(_batch_argv(tmp_path, "--json")) == 4
+    s = json.loads(capsys.readouterr().out)
+    assert s["status"] == "partial"
+    assert [r["converged"] for r in s["structures"][:2]] == [False, None]
+
+
+def test_unconverged_single_structure_is_partial(tmp_path, monkeypatch, capsys):
+    def fake(**kwargs):
+        s = _he()
+        s.converged = False
+        return s
+
+    monkeypatch.setattr(cli, "optimize_single_smiles", fake)
+    argv = ["optimize", "--smiles", "[He]", "-o", "o.xyz", "-c", _write_config(tmp_path), "--json"]
+    assert main(argv) == 4
+    assert json.loads(capsys.readouterr().out)["status"] == "partial"
+
+
+def test_ensemble_with_failed_conformers_is_partial(tmp_path, monkeypatch, capsys):
+    """ensemble always reported ok, even when conformers failed to optimize."""
+    monkeypatch.setattr(
+        cli, "_optimize_ensemble_smiles", lambda smiles, output_file, config: ([_he(), _he()], 3)
+    )
+    argv = ["ensemble", "--smiles", "[He]", "-o", "o.xyz", "-c", _write_config(tmp_path),
+            "--conformers", "5", "--json"]
+    assert main(argv) == 4
+    s = json.loads(capsys.readouterr().out)
+    assert (s["status"], s["n_input"], s["n_generated"], s["n_returned"]) == ("partial", 5, 3, 2)
+
+
+@pytest.mark.parametrize("command", [["convert"], ["generate", "--conformers", "1"]])
+def test_convert_and_generate_check_device(tmp_path, capsys, command):
+    """A GPU that doesn't exist used to fall back to the CPU without an error."""
+    argv = [*command, "--smiles", "C", "-o", str(tmp_path / "o.xyz"),
+            "-c", _write_config(tmp_path), "--device", "cuda:99", "--json"]
+    assert main(argv) == 3
+    assert not (tmp_path / "o.xyz").exists()
+
+
+def test_summary_names_the_checkpoint(tmp_path, monkeypatch, capsys):
+    checkpoint = tmp_path / "model.pt"
+    checkpoint.write_text("")
+    _fake_batch(monkeypatch, N_MULTI)
+    cfg = _write_config(tmp_path, model_type="fairchem", model_path=str(checkpoint))
+    argv = ["batch", "--multi-xyz", str(MULTI_XYZ), "-o", str(tmp_path / "o.xyz"), "-c", cfg]
+    assert main([*argv, "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["model"]["path"] == str(checkpoint)
+
+
+def test_dry_run_rechecks_cache_dir_after_model_type_override(tmp_path, monkeypatch, capsys):
+    _forbid_api(monkeypatch)
+    cfg = tmp_path / "c.json"
+    cfg.write_text(json.dumps({"model": {"model_cache_dir": str(tmp_path)},
+                               "technical": {"device": "cpu"}}))
+    argv = ["optimize", "--smiles", "CCO", "-o", "o.xyz", "-c", str(cfg), "--model-type", "orb",
+            "--dry-run", "--json"]
+    assert main(argv) == 3
+    assert "model_cache_dir" in json.loads(capsys.readouterr().out)["error"]["message"]

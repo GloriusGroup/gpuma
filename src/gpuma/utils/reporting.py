@@ -400,15 +400,15 @@ def _field(index, field, source):
 
 
 @_safe
-def _ase_result(converged, steps, optimizer, threshold):
+def _ase_result(converged, steps, optimizer, criterion, threshold):
     _emit(
         "mlip_optimize",
         "criterion_result",
         input_index=_scope.get()[2] or 0,
         optimizer=optimizer,
-        criterion="force",
+        criterion=criterion,
         threshold=float(threshold),
-        threshold_unit="eV/angstrom",
+        threshold_unit="eV/angstrom" if criterion == "force" else "eV",
         converged=bool(converged),
         steps=int(steps),
         termination_reason="criterion_satisfied" if converged else "unknown",
@@ -426,10 +426,11 @@ def _ase_returned():
 class _CriterionObserver:
     """Passive TorchSim 0.6.2 callback capture; never retain tensor references."""
 
-    def __init__(self, batcher, backend_version, count):
+    def __init__(self, batcher, backend_version, count, input_indices=None):
         self.batcher = batcher
         self.supported = backend_version == "0.6.2"
         self.count = count
+        self.input_indices = input_indices
         self.latest = {}
 
     def wrap(self, criterion):
@@ -475,7 +476,7 @@ class _CriterionObserver:
             _emit(
                 "mlip_optimize",
                 "criterion_result",
-                input_index=index,
+                input_index=self.input_indices[index] if self.input_indices else index,
                 converged=converged,
                 criterion=criterion,
                 threshold=float(threshold),
@@ -493,9 +494,9 @@ class _CriterionObserver:
 
 
 @_safe
-def _observe_criterion(batcher, count, criterion):
+def _observe_criterion(batcher, count, criterion, input_indices=None):
     observer = _CriterionObserver(
-        batcher, _current().backend_versions["torch-sim-atomistic"], count
+        batcher, _current().backend_versions["torch-sim-atomistic"], count, input_indices
     )
     return observer, observer.wrap(criterion)
 

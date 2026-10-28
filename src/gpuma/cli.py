@@ -27,9 +27,9 @@ from dataclasses import asdict
 
 from .agent_skills import install_skill
 from .api import (
+    _optimize_ensemble_smiles,
     optimize_batch_multi_xyz_file,
     optimize_batch_xyz_directory,
-    optimize_ensemble_smiles,
     optimize_single_smiles,
     optimize_single_xyz_file,
 )
@@ -49,6 +49,7 @@ from .cli_report import (
 from .config import (
     Config,
     check_d3_allowed,
+    check_model_cache_dir,
     check_model_path,
     load_config_from_file,
     resolve_model_type,
@@ -58,6 +59,7 @@ from .config_schema import config_json_schema
 from .doctor import recommended_device, run_checks
 from .models.base import AVAILABLE_FAIRCHEM_MODELS, AVAILABLE_SEVENNET_MODELS
 from .models.device import _parse_device_string
+from .structure import Structure, check_spin_state
 from .utils.io_handler import (
     read_multi_xyz,
     read_xyz,
@@ -587,14 +589,7 @@ def cmd_optimize(args, config: Config) -> CommandResult:
         optimized.energy if optimized.energy is not None else float("nan"),
     )
     logger.info("Optimized structure saved to %s", args.output)
-    return CommandResult(
-        "optimize",
-        "ok",
-        EXIT_OK,
-        output_file=args.output,
-        n_input=1,
-        structures=[structure_record(0, optimized)],
-    )
+    return _optimized_result("optimize", args, [optimized], n_input=1, n_expected=1)
 
 
 def cmd_ensemble(args, config: Config) -> CommandResult:
@@ -610,38 +605,72 @@ def cmd_ensemble(args, config: Config) -> CommandResult:
     logger.info("Generating %d conformers for SMILES: %s", num_conf, args.smiles)
     config.conformer_generation.max_num_conformers = num_conf
 
-    optimized_conformers = optimize_ensemble_smiles(
+    optimized_conformers, n_generated = _optimize_ensemble_smiles(
         smiles=args.smiles,
         output_file=args.output,
         config=config,
     )
 
     if not optimized_conformers:
-        raise RuntimeError("No conformers found")
+        raise RuntimeError("No conformers were optimized")
 
     logger.info(
-        "Ensemble optimization completed successfully! %d optimized conformers saved to %s",
+        "Ensemble optimization finished: %d optimized conformers saved to %s",
         len(optimized_conformers),
         args.output,
     )
-    return CommandResult(
+    return _optimized_result(
         "ensemble",
-        "ok",
-        EXIT_OK,
-        output_file=args.output,
+        args,
+        optimized_conformers,
         n_input=num_conf,
-        structures=[structure_record(i, s) for i, s in enumerate(optimized_conformers)],
+        n_expected=n_generated,
+        extra={"n_generated": n_generated},
+    )
+
+
+def _optimized_result(
+    command: str,
+    args,
+    structures: list[Structure],
+    n_input: int,
+    n_expected: int,
+    extra: dict | None = None,
+) -> CommandResult:
+    """Return ``ok``, or ``partial`` when a structure failed or didn't converge."""
+    n_failed = n_expected - len(structures)
+    n_unconverged = sum(s.converged is False for s in structures)
+    if n_failed:
+        logger.warning(
+            "Only %d of %d structures were optimized; see the log for the failures.",
+            len(structures),
+            n_expected,
+        )
+    if n_unconverged:
+        logger.warning("%d structure(s) did not converge within max_steps.", n_unconverged)
+    partial = n_failed or n_unconverged
+    return CommandResult(
+        command,
+        "partial" if partial else "ok",
+        EXIT_PARTIAL if partial else EXIT_OK,
+        output_file=args.output,
+        n_input=n_input,
+        structures=[structure_record(i, s) for i, s in enumerate(structures)],
+        extra=extra or {},
     )
 
 
 _DRY_RUN_COMMANDS = ("optimize", "smiles", "ensemble", "batch")
 
 
-def _check_smiles(smiles: str) -> None:
+def _check_smiles(smiles: str, multiplicity: int) -> None:
     from rdkit import Chem
 
-    if Chem.MolFromSmiles(smiles) is None:
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
         raise ValueError(f"Invalid SMILES: {smiles!r}")
+    symbols = [atom.GetSymbol() for atom in Chem.AddHs(mol).GetAtoms()]
+    check_spin_state(symbols, Chem.GetFormalCharge(mol), multiplicity)
 
 
 _DEFAULT_MODEL_NAMES = {
@@ -683,26 +712,28 @@ def _check_inputs(args, config: Config) -> int:
     """Validate inputs, model and device without loading a model; return ``n_input``."""
     # CLI overrides apply after Config validation, so re-check what they can change.
     check_model_path(config)
+    check_model_cache_dir(config)
     check_d3_allowed(config)
     _check_model(config)
     _parse_device_string(str(config.technical.device))
     charge = int(config.optimization.charge)
     multiplicity = int(config.optimization.multiplicity)
+    if args.command in ("optimize", "smiles", "ensemble") and args.smiles:
+        _check_smiles(args.smiles, multiplicity)
+        return _resolve_conformer_count(args, config) if args.command == "ensemble" else 1
     if args.command in ("optimize", "smiles"):
-        if args.smiles:
-            _check_smiles(args.smiles)
-        else:
-            read_xyz(args.xyz, charge=charge, multiplicity=multiplicity)
-        return 1
-    if args.command == "ensemble":
-        _check_smiles(args.smiles)
-        return _resolve_conformer_count(args, config)
-    if args.multi_xyz:
+        structures = [read_xyz(args.xyz, charge=charge, multiplicity=multiplicity)]
+    elif args.multi_xyz:
         structures = read_multi_xyz(args.multi_xyz, charge=charge, multiplicity=multiplicity)
     else:
         structures = read_xyz_directory(args.xyz_dir, charge=charge, multiplicity=multiplicity)
     if not structures:
         raise ValueError("No input structures found")
+    for i, s in enumerate(structures):
+        try:
+            check_spin_state(s.symbols, s.charge, s.multiplicity)
+        except ValueError as exc:
+            raise ValueError(f"structure {i + 1}: {exc}") from exc
     return len(structures)
 
 
@@ -751,32 +782,8 @@ def cmd_batch(args, config: Config) -> CommandResult:
     if not structures:
         raise RuntimeError("No structures were optimized")
 
-    records = [structure_record(i, s) for i, s in enumerate(structures)]
-    if len(structures) < n_input:
-        logger.warning(
-            "Only %d of %d structures were optimized; see the log for the failures.",
-            len(structures),
-            n_input,
-        )
-        return CommandResult(
-            "batch",
-            "partial",
-            EXIT_PARTIAL,
-            output_file=args.output,
-            n_input=n_input,
-            structures=records,
-        )
-
-    logger.info("Batch optimization completed successfully!")
     logger.info("Optimized structures saved to %s", args.output)
-    return CommandResult(
-        "batch",
-        "ok",
-        EXIT_OK,
-        output_file=args.output,
-        n_input=n_input,
-        structures=records,
-    )
+    return _optimized_result("batch", args, structures, n_input=n_input, n_expected=n_input)
 
 
 def cmd_convert(args, config: Config) -> CommandResult:
@@ -785,6 +792,7 @@ def cmd_convert(args, config: Config) -> CommandResult:
     This command generates a single 3D structure from SMILES without running
     any optimization. ``config`` selects the embedding device.
     """
+    _parse_device_string(str(config.technical.device))
     logger.info("Converting SMILES '%s' to XYZ without optimization", args.smiles)
     structure = smiles_to_xyz(args.smiles, config=config)
     save_xyz_file(structure, args.output)
@@ -805,6 +813,7 @@ def cmd_generate(args, config: Config) -> CommandResult:
     This command generates a conformer ensemble from a SMILES string without
     optimization.
     """
+    _parse_device_string(str(config.technical.device))
     num_conf = _resolve_conformer_count(args, config)
     logger.info(
         "Generating %d conformers for SMILES (no optimization): %s",

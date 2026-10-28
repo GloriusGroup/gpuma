@@ -20,7 +20,7 @@ read the end of the log (stderr).
 | `model_modal` error with SevenNet | Multi-modal checkpoint | Set `model.model_modal` |
 | Energies of ions or radicals look wrong | Charge or multiplicity not set for XYZ input | Set `--charge` and `--multiplicity` |
 | Different conformers on a rerun | GPU conformer generation is not reproducible | Expected; not an error |
-| Exit 4 | Some structures failed to optimize | See "Finding failed structures" below |
+| Exit 4 | Some structures failed or didn't converge | See "Finding failed structures" below |
 
 ## Reading the diagnostics
 
@@ -42,9 +42,11 @@ says nothing about whether the run succeeded.
 
 ## Finding failed structures
 
-In a partial batch (exit 4), the failed inputs are the `input_index` values with
-no `optimization_returned` event, counting from 0 in input order. Structures
-with `converged: false` were returned but did not reach the force criterion.
+In a partial result (exit 4), the failed inputs are the `input_index` values
+with no `optimization_returned` event that has `optimized: true`, counting from 0
+in input order. Structures with `converged: false` were returned but stopped at
+`optimization.max_steps` before reaching the criterion; raise `max_steps` or
+check the geometry.
 Report both to the user, with their positions in the input file. Note that
 `structures[].index` in the summary counts the returned structures, not the
 inputs.

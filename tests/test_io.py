@@ -12,6 +12,7 @@ from gpuma.utils.io_handler import (
     smiles_to_ensemble,
     smiles_to_xyz,
 )
+from gpuma.config import Config
 from gpuma.structure import Structure
 
 from conftest import (
@@ -101,53 +102,47 @@ def test_read_multi_xyz_butene_triplet():
     assert len(structures) >= 1
 
 
-def test_read_multi_xyz_malformed_skips(tmp_path):
-    """Malformed structures in multi-XYZ are skipped; valid ones are kept."""
-    content = "3\nWater\nO 0 0 0\nH 1 0 0\nH 0 1 0\n999\nBad\n"
-    f = tmp_path / "partial.xyz"
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        # malformed atom line
+        ("2\nfirst\nO 0 0 0\nH 1 0 0\n3\nbad\nO 0 0 0\nH oops\nH 0 1 0\n", "structure 2"),
+        # count too high: swallows the next block's header
+        ("3\nfirst\nO 0 0 0\nH 1 0 0\n2\nsecond\nN 0 0 0\nN 1 0 0\n", "structure 1"),
+        # count too low: an atom line where the next count should be
+        ("1\nfirst\nO 0 0 0\nH 1 0 0\n", "atom count"),
+        # truncated at end of file
+        ("2\nfirst\nO 0 0 0\nH 1 0 0\n5\ntruncated\nO 0 0 0\n", "structure 2"),
+        # header without a comment line
+        ("2\nfirst\nO 0 0 0\nH 1 0 0\n999\n", "structure 2"),
+    ],
+)
+def test_read_multi_xyz_rejects_inconsistent_blocks(tmp_path, content, message):
+    """A block that doesn't match its atom count is an error, never skipped or merged."""
+    f = tmp_path / "bad.xyz"
     f.write_text(content)
-    structures = read_multi_xyz(str(f))
-    assert len(structures) == 1
-    assert structures[0].n_atoms == 3
+    with pytest.raises(ValueError, match=message):
+        read_multi_xyz(str(f))
 
 
-def test_read_multi_xyz_resyncs_after_a_bad_structure(tmp_path):
-    """A malformed block must not take the structures after it down with it.
+def test_read_multi_xyz_allows_blank_lines_between_blocks(tmp_path):
+    f = tmp_path / "blank.xyz"
+    f.write_text("2\nfirst\nO 0 0 0\nH 1 0 0\n\n2\nsecond\nN 0 0 0\nN 1 0 0\n\n")
+    assert [s.comment for s in read_multi_xyz(str(f))] == ["first", "second"]
 
-    Resynchronisation relies on the fact that a coordinate line never parses as
-    a bare integer, so the scan for the next atom count skips the rest of the
-    bad block and lands on the following header. That is load-bearing but
-    implicit, hence this guard.
-    """
-    content = (
-        "2\nfirst\nO 0 0 0\nH 1 0 0\n"
-        "3\nbad\nO 0 0 0\nH oops\nH 0 1 0\n"      # malformed atom line
-        "2\nthird\nN 0 0 0\nN 1 0 0\n"
+
+def test_read_xyz_takes_charge_and_multiplicity_from_gpuma_comment(tmp_path, caplog):
+    """gpuma's own output comment carries the state; it wins over the passed default."""
+    f = tmp_path / "radical.xyz"
+    f.write_text(
+        "4\nOptimized | Energy: -1.0 eV | Charge: 0 | Multiplicity: 2\n"
+        "C 0 0 0\nH 1 0 0\nH 0 1 0\nH 0 0 1\n"
     )
-    f = tmp_path / "resync.xyz"
-    f.write_text(content)
-
-    structures = read_multi_xyz(str(f))
-
-    assert [s.comment for s in structures] == ["first", "third"]
-    assert structures[1].symbols == ["N", "N"]
-
-
-def test_read_multi_xyz_truncated_final_structure(tmp_path):
-    """Running out of file mid-structure still keeps what came before.
-
-    Note the declared count is trusted: a block claiming more atoms than the
-    file holds consumes whatever follows, so any structures after it are lost.
-    Only the truncated-at-EOF case is asserted here, where there is nothing
-    left to lose.
-    """
-    content = "2\nfirst\nO 0 0 0\nH 1 0 0\n5\ntruncated\nO 0 0 0\n"
-    f = tmp_path / "truncated.xyz"
-    f.write_text(content)
-
-    structures = read_multi_xyz(str(f))
-
-    assert [s.comment for s in structures] == ["first"]
+    s = read_xyz(str(f))
+    assert (s.charge, s.multiplicity) == (0, 2)
+    assert "Multiplicity" in caplog.text
+    multi = read_multi_xyz(str(f), charge=0, multiplicity=1)
+    assert (multi[0].charge, multi[0].multiplicity) == (0, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +162,24 @@ def test_read_xyz_directory_not_found():
     """Missing directory raises FileNotFoundError."""
     with pytest.raises(FileNotFoundError):
         read_xyz_directory("/nonexistent/dir")
+
+
+def test_read_xyz_directory_raises_on_unreadable_file(tmp_path):
+    """One bad file is an error naming that file, not a warning and a shorter list."""
+    (tmp_path / "a.xyz").write_text("2\nok\nH 0 0 0\nH 0.7 0 0\n")
+    (tmp_path / "b.xyz").write_text("2\nbroken\nH 0 0 0\n")
+    with pytest.raises(ValueError, match="b.xyz"):
+        read_xyz_directory(str(tmp_path))
+
+
+def test_read_xyz_directory_records_source_file(tmp_path):
+    (tmp_path / "mol_2.xyz").write_text("2\nok\nH 0 0 0\nH 0.7 0 0\n")
+    (tmp_path / "mol_10.xyz").write_text("2\nok\nH 0 0 0\nH 0.7 0 0\n")
+    structures = read_xyz_directory(str(tmp_path))
+    assert [s.metadata["source_file"] for s in structures] == [
+        str(tmp_path / "mol_2.xyz"),
+        str(tmp_path / "mol_10.xyz"),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +285,43 @@ def test_smiles_to_xyz_with_multiplicity():
     """Multiplicity parameter is passed through to the structure."""
     s = smiles_to_xyz("C", multiplicity=3)
     assert s.multiplicity == 3
+
+
+CPU = Config({"technical": {"device": "cpu"}})
+
+
+def test_smiles_to_xyz_rejects_radical_as_singlet():
+    """[CH3] has an odd electron count, so the default singlet is impossible."""
+    with pytest.raises(ValueError, match="multiplicity"):
+        smiles_to_xyz("[CH3]", config=CPU)
+    assert smiles_to_xyz("[CH3]", multiplicity=2, config=CPU).multiplicity == 2
+
+
+def test_smiles_to_xyz_takes_multiplicity_from_config():
+    config = Config({"optimization": {"multiplicity": 3}, "technical": {"device": "cpu"}})
+    assert smiles_to_xyz("C", config=config).multiplicity == 3
+
+
+def test_smiles_to_xyz_uses_config_seed():
+    """Same config seed, same geometry; the seed used to be dropped (RDKit picked one)."""
+    config = Config({"conformer_generation": {"conformer_seed": 7}, "technical": {"device": "cpu"}})
+    first = smiles_to_xyz("CCCCO", config=config)
+    second = smiles_to_xyz("CCCCO", config=config)
+    assert first.coordinates == second.coordinates
+
+
+def test_smiles_to_ensemble_uses_config_seed():
+    config = Config({"conformer_generation": {"conformer_seed": 7}, "technical": {"device": "cpu"}})
+    first = smiles_to_ensemble("CCCCO", max_num_confs=3, config=config)
+    second = smiles_to_ensemble("CCCCO", max_num_confs=3, config=config)
+    assert [s.coordinates for s in first] == [s.coordinates for s in second]
+
+
+def test_save_marks_unconverged_structures(tmp_path, methane):
+    methane.converged = False
+    out = tmp_path / "u.xyz"
+    save_multi_xyz([methane], str(out))
+    assert "Not converged" in out.read_text().splitlines()[1]
 
 
 # ---------------------------------------------------------------------------

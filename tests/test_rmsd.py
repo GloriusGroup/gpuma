@@ -186,3 +186,48 @@ def test_symmetric_serves_the_same_ensemble_within_budget():
     mol, symbols, coordinates = _ensemble(ROTOR_RICH, n_confs=4)
 
     assert symmetric_rmsd_fn(mol, symbols, coordinates, ROTOR_RICH) is not None
+
+
+def test_symmetric_declines_a_mol_rdkit_cannot_kekulize(caplog):
+    """Stripping the C-H hydrogens of an aromatic anion fails to kekulize; fall back."""
+    smiles = "c1cc[cH-]c1"
+    mol = Chem.AddHs(Chem.MolFromSmiles(smiles))  # no MMFF, which kekulizes in place
+    AllChem.EmbedMultipleConfs(mol, numConfs=2, randomSeed=42)
+    symbols = [atom.GetSymbol() for atom in mol.GetAtoms()]
+    coordinates = [conf.GetPositions() for conf in mol.GetConformers()]
+
+    with caplog.at_level(logging.WARNING):
+        assert symmetric_rmsd_fn(mol, symbols, coordinates, smiles) is None
+    assert "Kabsch" in caplog.text
+
+
+def test_symmetric_prune_survives_a_mol_rdkit_cannot_kekulize():
+    """One such molecule used to abort the whole library."""
+    from gpuma.config import Config
+    from gpuma.conformer_generation import generate_ensembles
+
+    config = Config({"technical": {"device": "cpu"}})
+    result = generate_ensembles(
+        ["c1cc[cH-]c1", "CCO"], 2, config=config, seed=1, prune_symmetry=True
+    )
+    assert all(result)
+
+
+def test_symmetric_matches_every_automorphism(monkeypatch):
+    """GetBestRMS stops at maxMatches (1e6 by default), below gpuma's own cap."""
+    import rdkit.Chem.rdMolAlign as rdMolAlign
+
+    seen = []
+    original = rdMolAlign.GetBestRMS
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs.get("maxMatches"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(rdMolAlign, "GetBestRMS", spy)
+    mol, symbols, coordinates = _ensemble(ROTOR_RICH, n_confs=2)
+
+    rmsd = symmetric_rmsd_fn(mol, symbols, coordinates, ROTOR_RICH)
+    rmsd(0, 1)
+
+    assert seen == [rmsd_module.AUTOMORPHISM_CAP]

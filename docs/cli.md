@@ -163,9 +163,10 @@ The summary contains:
 | `status` | `ok`, `partial`, `error` or `dry_run` |
 | `exit_code` | The process exit code (see below) |
 | `command`, `output_file` | What ran and where results were written |
-| `device`, `model`, `config` | The resolved device, the model, and the full config (Hugging Face token masked) |
+| `device`, `model`, `config` | The resolved device, the model (`type`, `name`, and `path` when a checkpoint was loaded), and the full config (Hugging Face token masked) |
 | `n_input`, `n_returned` | Number of input structures and of returned structures |
-| `structures` | Per returned structure: `index`, `n_atoms`, `charge`, `multiplicity`, `energy_ev`, `comment` |
+| `n_generated` | `ensemble` only: conformers generated (pruning can leave fewer than requested) |
+| `structures` | Per returned structure: `index`, `n_atoms`, `charge`, `multiplicity`, `energy_ev`, `comment`, `converged` |
 | `diagnostics` | The engine diagnostic report (embedding and optimization events, convergence where known) |
 | `error` | `{"type", "message"}` when the command failed, else `null` |
 | `wall_time_s`, `gpuma_version`, `schema_version` | Run metadata |
@@ -183,7 +184,7 @@ The summary contains:
 | `1` | Runtime failure (for example an optimization crashed) |
 | `2` | Command-line usage error |
 | `3` | Invalid input, config value, model name or device, as detected by GPUMA's own checks |
-| `4` | Partial batch: some structures failed to optimize |
+| `4` | Partial result: some structures failed to optimize or stopped at `max_steps` without converging |
 
 ## Checking before running
 

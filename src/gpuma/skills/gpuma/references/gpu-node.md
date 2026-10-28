@@ -40,7 +40,7 @@ ORB and SevenNet need no token. For UMA:
 The first use of a model downloads it into the Hugging Face cache
 (`~/.cache/huggingface`, or `HF_HOME` if set), which needs internet access on
 the node. If the home directory has a small quota, set `model.model_cache_dir`
-to a directory with more space. Later runs load from the cache.
+(UMA only) or `HF_HOME` to a directory with more space. Later runs load from the cache.
 
 ## Long runs
 

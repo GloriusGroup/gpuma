@@ -26,7 +26,8 @@ them for molecules.
 | `optimization.batch_optimization_mode` | `batch` | Keep `batch`. `sequential` optimizes one structure at a time and is only for debugging. |
 | `optimization.force_convergence_criterion` | `0.05` eV/Å | Tighten (e.g. `0.01`) only when the geometry feeds something force-sensitive, such as frequencies. |
 | `optimization.energy_convergence_criterion` | `null` | Leave unset; the force criterion is the reliable one. |
-| `optimization.charge` / `optimization.multiplicity` | `0` / `1` | Used for XYZ input. SMILES input takes its charge from the SMILES. |
+| `optimization.max_steps` | `10000` | Leave it. A structure that reaches it is returned with `converged: false` (exit 4). |
+| `optimization.charge` / `optimization.multiplicity` | `0` / `1` | Used for XYZ input; gpuma's own output files carry both in the comment line, which wins. SMILES input takes its charge from the SMILES. A radical needs its multiplicity set (e.g. `2`); an impossible one is an error. |
 
 ## Conformers
 

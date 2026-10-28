@@ -81,21 +81,18 @@ def _load_hf_token_to_env(config: Config) -> None:
 def _verify_model_name_and_cache_dir(config: Config) -> tuple[str, Path | None]:
     """Return ``(model_name, cache_dir)`` after validating the config values.
 
-    Raises :class:`ValueError` if ``model_name`` is empty or missing.
+    Raises :class:`ValueError` if ``model_name`` is missing or the cache dir can't be created.
     """
     opt = config.model
     model_name = opt.model_name
     if not model_name:
         raise ValueError("Model name must be specified in the configuration")
     model_cache_dir = Path(opt.model_cache_dir) if opt.model_cache_dir else None
-    if model_cache_dir and not model_cache_dir.exists():
+    if model_cache_dir:
         try:
             os.makedirs(model_cache_dir, exist_ok=True)
-        except OSError as e:
-            logger.warning("Could not create model cache directory at %s: %s", model_cache_dir, e)
-            model_cache_dir = None
-    if model_cache_dir is not None and not model_cache_dir.exists():
-        model_cache_dir = None
+        except OSError as exc:
+            raise ValueError(f"model_cache_dir {str(model_cache_dir)!r}: {exc}") from exc
     return model_name, model_cache_dir
 
 
