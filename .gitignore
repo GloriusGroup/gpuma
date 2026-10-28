@@ -144,7 +144,6 @@ examples/screening_results/
 /examples/example_input_xyzs/primary-amines_library/
 /examples/example_input_xyzs/kraken_library/
 
-uv.lock
 /.claude/
 
 # Local-only benchmark scripts (kept out of the repo per request)
