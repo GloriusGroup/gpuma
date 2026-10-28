@@ -33,8 +33,8 @@ def optimize_single_smiles(
     """Optimize a single molecule from a SMILES string.
 
     This function uses the provided SMILES string to generate an initial 3D structure
-    using the Morfeus library. It then optimizes the structure using the specified
-    optimization pipeline.
+    (nvMolKit on GPU, morfeus on CPU). It then optimizes the structure using the
+    specified optimization pipeline.
 
     Args:
         smiles (str): SMILES string of the molecule to optimize.
@@ -124,7 +124,7 @@ def optimize_ensemble_smiles(
     """Optimize a conformer ensemble generated from a SMILES string.
 
     This function generates a specified number of conformers from the provided
-    SMILES string using the Morfeus library. It then optimizes each conformer
+    SMILES string (nvMolKit on GPU, morfeus on CPU). It then optimizes each conformer
     using the specified optimization pipeline. Optionally, the optimized ensemble
     can be saved to a multi-structure XYZ file.
 

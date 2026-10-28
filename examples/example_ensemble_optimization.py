@@ -14,7 +14,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import gpuma
 from gpuma.config import Config, load_config_from_file
 
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "example_output")
+HERE = os.path.dirname(__file__)
+OUTPUT_DIR = os.path.join(HERE, "example_output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
@@ -52,10 +53,10 @@ def example_batch_from_multi_xyz():
     """Example 2: Batch optimize structures from a multi-structure XYZ file."""
     print("\n=== Example 2: Batch optimization from multi-XYZ file ===")
 
-    input_file = "example_input_xyzs/butene_triplet_multi.xyz"
+    input_file = os.path.join(HERE, "example_input_xyzs/butene_triplet_multi.xyz")
     output_file = os.path.join(OUTPUT_DIR, "python_batch_from_multi_xyz_optimized.xyz")
 
-    config = load_config_from_file("config.json")
+    config = load_config_from_file(os.path.join(HERE, "config.json"))
     config.optimization.multiplicity = 3
     results = gpuma.optimize_batch_multi_xyz_file(
         input_file=input_file,
@@ -74,7 +75,7 @@ def example_batch_from_xyz_directory():
     """Example 3: Batch optimize structures from a directory of XYZ files."""
     print("\n=== Example 3: Batch optimization from XYZ directory ===")
 
-    input_dir = "example_input_xyzs/multi_xyz_dir"
+    input_dir = os.path.join(HERE, "example_input_xyzs/multi_xyz_dir")
     output_file = os.path.join(OUTPUT_DIR, "python_batch_from_directory_optimized.xyz")
 
     results = gpuma.optimize_batch_xyz_directory(
@@ -105,7 +106,7 @@ def example_ensemble_from_smiles_orb():
     print("\n=== Example 4: Ensemble optimization from SMILES (ORB-v3, batch) ===")
 
     smiles = "CCC(CC)CCOOC(CC)CCOC"
-    config = load_config_from_file("config_orb.json")
+    config = load_config_from_file(os.path.join(HERE, "config_orb.json"))
     config.conformer_generation.max_num_conformers = 50
     config.optimization.force_convergence_criterion = 5e-1
     # batch mode is the default in config_orb.json
@@ -130,10 +131,10 @@ def example_batch_from_multi_xyz_orb():
     """Example 6: Batch optimize structures from a multi-XYZ file (ORB-v3)."""
     print("\n=== Example 6: Batch optimization from multi-XYZ file (ORB-v3) ===")
 
-    input_file = "example_input_xyzs/butene_triplet_multi.xyz"
+    input_file = os.path.join(HERE, "example_input_xyzs/butene_triplet_multi.xyz")
     output_file = os.path.join(OUTPUT_DIR, "python_batch_from_multi_xyz_orb.xyz")
 
-    config = load_config_from_file("config_orb.json")
+    config = load_config_from_file(os.path.join(HERE, "config_orb.json"))
     config.optimization.multiplicity = 3
     results = gpuma.optimize_batch_multi_xyz_file(
         input_file=input_file,
@@ -152,10 +153,10 @@ def example_batch_from_xyz_directory_orb():
     """Example 7: Batch optimize structures from a directory of XYZ files (ORB-v3)."""
     print("\n=== Example 7: Batch optimization from XYZ directory (ORB-v3) ===")
 
-    input_dir = "example_input_xyzs/multi_xyz_dir"
+    input_dir = os.path.join(HERE, "example_input_xyzs/multi_xyz_dir")
     output_file = os.path.join(OUTPUT_DIR, "python_batch_from_directory_orb.xyz")
 
-    config = load_config_from_file("config_orb.json")
+    config = load_config_from_file(os.path.join(HERE, "config_orb.json"))
     results = gpuma.optimize_batch_xyz_directory(
         input_directory=input_dir,
         output_file=output_file,
@@ -178,7 +179,7 @@ def example_ensemble_from_smiles_orb_sequential():
     print("\n=== Example 8: Ensemble optimization from SMILES (ORB-v3, sequential) ===")
 
     smiles = "CCC(CC)CCOOC(CC)CCOC"
-    config = load_config_from_file("config_orb.json")
+    config = load_config_from_file(os.path.join(HERE, "config_orb.json"))
     config.conformer_generation.max_num_conformers = 10
     config.optimization.batch_optimization_mode = "sequential"
     print(f"Generating conformers for {smiles} and optimizing with ORB-v3 (sequential)...")

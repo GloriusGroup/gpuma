@@ -28,6 +28,11 @@ _PATTERNS: dict[tuple[str, str], str] = {
     ("technical", "device"): r"^(cpu|cuda(:\d+)?)$",
 }
 
+_BOUNDS: dict[tuple[str, str], dict[str, float]] = {
+    ("technical", "memory_scaling_factor"): {"exclusiveMinimum": 1},
+    ("technical", "max_memory_padding"): {"minimum": 0.05, "maximum": 0.95},
+}
+
 
 def _json_type(value: Any) -> str:
     if isinstance(value, bool):
@@ -49,6 +54,7 @@ def _property(section: str, key: str, default: Any) -> dict[str, Any]:
         prop["enum"] = _ENUMS[(section, key)]
     if (section, key) in _PATTERNS:
         prop["pattern"] = _PATTERNS[(section, key)]
+    prop.update(_BOUNDS.get((section, key), {}))
     return prop
 
 

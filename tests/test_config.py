@@ -73,9 +73,20 @@ def test_load_save_yaml(tmp_path):
 
 
 def test_load_non_existent():
-    """Loading a missing file returns defaults without error."""
-    cfg = load_config_from_file("non_existent_file.json")
-    assert cfg.optimization.charge == 0
+    """A config path that doesn't exist is an error, not a silent switch to the defaults."""
+    with pytest.raises(FileNotFoundError, match="non_existent_file.json"):
+        load_config_from_file("non_existent_file.json")
+
+
+def test_load_without_path_uses_defaults_when_no_config_json(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert load_config_from_file().optimization.charge == 0
+
+
+def test_load_without_path_reads_config_json(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    save_config_to_file(Config({"optimization": {"charge": 1}}), "config.json")
+    assert load_config_from_file().optimization.charge == 1
 
 
 def test_validate_config():
@@ -492,3 +503,44 @@ def test_model_path_with_orb_is_error(tmp_path):
     ckpt.write_bytes(b"")
     with pytest.raises(ValueError, match="not supported for model_type 'orb'"):
         Config({"model": {"model_type": "orb", "model_path": str(ckpt)}})
+
+
+@pytest.mark.parametrize("factor", [1, 0.5, "x"])
+def test_memory_scaling_factor_must_exceed_one(factor):
+    """The autobatcher probe never grows with a factor of 1 or less."""
+    with pytest.raises(ValueError, match="memory_scaling_factor must be a number > 1"):
+        Config({"technical": {"memory_scaling_factor": factor}})
+
+
+@pytest.mark.parametrize("padding", [0.01, 0.99, 1.0, None])
+def test_max_memory_padding_range(padding):
+    """max_memory_padding must lie in [0.05, 0.95]."""
+    with pytest.raises(ValueError, match="max_memory_padding must be between 0.05 and 0.95"):
+        Config({"technical": {"max_memory_padding": padding}})
+
+
+@pytest.mark.parametrize("padding", [0.05, 0.95])
+def test_max_memory_padding_bounds_inclusive(padding):
+    cfg = Config({"technical": {"max_memory_padding": padding}})
+    assert cfg.technical.max_memory_padding == padding
+
+
+def test_sevennet_d3_rejects_non_bj_damping():
+    """SevenNet's native D3 has no BJM damping."""
+    with pytest.raises(ValueError, match="SevenNet's D3 only supports BJ damping"):
+        Config({"model": {"model_type": "sevennet", "d3_correction": True, "d3_damping": "BJM"}})
+
+
+def test_sevennet_d3_bj_damping_is_allowed():
+    cfg = Config({"model": {"model_type": "sevennet", "d3_correction": True, "d3_damping": "bj"}})
+    assert cfg.model.d3_correction is True
+
+
+@pytest.mark.parametrize(("modal", "warns"), [("omol25_high", True), ("mpa", False)])
+def test_d3_warning_for_sevennet_omol25_modal(caplog, modal, warns):
+    """SevenNet's OMol25 fidelities are ωB97M-V, so D3 counts dispersion twice."""
+    model = {"model_type": "sevennet", "model_name": "7net-omni", "model_modal": modal}
+    cfg = Config({"model": model})
+    with caplog.at_level("WARNING", logger="gpuma.config"):
+        warn_d3_double_counting(cfg)
+    assert ("counts dispersion twice" in caplog.text) is warns

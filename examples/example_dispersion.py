@@ -39,7 +39,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import gpuma
 from gpuma.config import load_config_from_file
 
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "example_output")
+HERE = os.path.dirname(__file__)
+OUTPUT_DIR = os.path.join(HERE, "example_output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # A short alkane chain — D3 contributes a non-trivial attractive correction
@@ -55,7 +56,7 @@ def _build_config(
 ):
     """Build a Config for ``backend`` with D3 toggled and the requested mode."""
     config_file = "config.json" if backend == "fairchem" else "config_orb.json"
-    cfg = load_config_from_file(config_file)
+    cfg = load_config_from_file(os.path.join(HERE, config_file))
     if backend == "fairchem":
         cfg.model.model_name = "uma-s-1p2p1"
     cfg.model.d3_correction = d3

@@ -62,7 +62,7 @@ considered experimental.
 - **Using a `uv` virtual environment**
   ```powershell
   # create and activate a fresh environment
-  uv venv .venv
+  uv venv .venv --python 3.12
 
   # activate the environment
 
@@ -153,7 +153,8 @@ When a run is started from SMILES, an RDKit/MMFF force field (via nvMolKit on GP
 - D3 dispersion correction: off by default. Enable it with
   `"d3_correction": true` for models trained without dispersion. It is
   rejected for `uma-s-1p2p1-ft-d4rev` and logs a warning for the other UMA
-  models and ORB `*_omol` models (see [Configuration](config.md)).
+  models, ORB `*_omol` models and SevenNet `omol25_*` modals (see
+  [Configuration](config.md)).
 
 ## License
 MIT License (see LICENSE)

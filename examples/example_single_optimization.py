@@ -14,7 +14,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import gpuma
 from gpuma.config import load_config_from_file
 
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "example_output")
+HERE = os.path.dirname(__file__)
+OUTPUT_DIR = os.path.join(HERE, "example_output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
@@ -25,7 +26,7 @@ def example_optimize_from_smiles():
     smiles = "C1=C[O+]=CC=C1CCCCCC"
     print(f"Optimizing {smiles} ...")
 
-    cfg = load_config_from_file("config.json")
+    cfg = load_config_from_file(os.path.join(HERE, "config.json"))
     cfg.optimization.multiplicity = 1
 
     output_file = os.path.join(OUTPUT_DIR, "python_single_smiles_basic.xyz")
@@ -58,14 +59,14 @@ def example_optimize_from_xyz():
     """Example 2: Optimize a molecule from an XYZ file."""
     print("\n=== Example 2: Single optimization from XYZ file ===")
 
-    input_file = "example_input_xyzs/butene_triplet.xyz"
+    input_file = os.path.join(HERE, "example_input_xyzs/butene_triplet.xyz")
     output_file = os.path.join(OUTPUT_DIR, "python_single_xyz_basic.xyz")
 
     if not os.path.exists(input_file):
         print(f"  Input file {input_file} not found")
         return
 
-    cfg = load_config_from_file("config.json")
+    cfg = load_config_from_file(os.path.join(HERE, "config.json"))
     cfg.optimization.charge = 0
     cfg.optimization.multiplicity = 3
 
@@ -91,7 +92,7 @@ def example_optimize_from_smiles_orb():
 
     # Load the ORB-specific config (sets model_type="orb",
     # model_name="orb_v3_direct_omol")
-    cfg = load_config_from_file("config_orb.json")
+    cfg = load_config_from_file(os.path.join(HERE, "config_orb.json"))
     cfg.optimization.multiplicity = 1
 
     output_file = os.path.join(OUTPUT_DIR, "python_single_smiles_orb.xyz")

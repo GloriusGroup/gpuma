@@ -206,6 +206,20 @@ class TestCliConfig:
             data = json.load(f)
         assert data["model"]["model_name"] == "uma-s-1p2p1-ft-d4rev"
 
+    def test_config_create_ignores_loaded_config(self, tmp_path, monkeypatch):
+        """config --create writes the defaults, not ./config.json or CLI overrides."""
+        monkeypatch.chdir(tmp_path)
+        save_config_to_file(Config({"model": {"model_type": "orb"}}), "config.json")
+        assert main(["--model-type", "sevennet", "config", "--create", "new.json"]) == 0
+        data = json.loads((tmp_path / "new.json").read_text())
+        assert data["model"]["model_type"] == "fairchem"
+
+    def test_config_create_refuses_to_overwrite(self, tmp_path):
+        cfg_file = tmp_path / "existing.json"
+        cfg_file.write_text("{}")
+        assert main(["config", "--create", str(cfg_file)]) == 3
+        assert cfg_file.read_text() == "{}"
+
     def test_config_validate(self, tmp_path):
         """config --validate accepts a valid config file."""
         cfg_file = tmp_path / "test_config.json"

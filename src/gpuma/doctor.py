@@ -121,12 +121,14 @@ def _check_cuda(wants_cuda: bool) -> Check:
         detail += " (this torch build has no CUDA support)"
     elif _driver_too_old():
         detail += f" (this torch build targets CUDA {torch.version.cuda}; the driver is too old)"
-        hint = "Update the NVIDIA driver, or install a torch build for an older CUDA."
+        hint = "Update the NVIDIA driver; gpuma pins torch, which has no build for an older CUDA."
         if int(torch.version.cuda.split(".")[0]) >= 13:
+            # The same version is already installed, so a plain install is a no-op.
+            spec = f"torch=={torch.__version__.split('+')[0]}"
+            index = "--index-url https://download.pytorch.org/whl/cu126"
             hint = (
-                "Reinstall torch for CUDA 12.6: "
-                f"pip install torch=={torch.__version__.split('+')[0]} "
-                "--index-url https://download.pytorch.org/whl/cu126"
+                f"Reinstall torch for CUDA 12.6: pip install --force-reinstall {spec} {index} "
+                f"(uv: uv pip install --reinstall-package torch {spec} {index})"
             )
     return Check("cuda", "fail" if wants_cuda else "warn", detail, hint=hint)
 

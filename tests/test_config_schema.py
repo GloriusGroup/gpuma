@@ -63,3 +63,12 @@ def test_schema_command_prints_schema(capsys):
 def test_schema_command_with_json_puts_schema_in_summary(capsys):
     assert main(["config", "--schema", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["schema"] == config_json_schema()
+
+
+def test_schema_bounds_match_validators():
+    tech = config_json_schema()["properties"]["technical"]["properties"]
+    assert tech["memory_scaling_factor"]["exclusiveMinimum"] == 1
+    assert (tech["max_memory_padding"]["minimum"], tech["max_memory_padding"]["maximum"]) == (
+        0.05,
+        0.95,
+    )

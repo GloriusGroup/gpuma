@@ -100,9 +100,9 @@ For multi-modal checkpoints such as `7net-omni` or `7net-mf-ompa`, a
 
 D3 is off by default and adds GPU memory per batch; enable it only for models
 trained without dispersion. `uma-s-1p2p1-ft-d4rev` already includes dispersion
-and rejects D3. The other UMA models and the ORB `*_omol` models are trained on
-ωB97M-V, which also includes it, so gpuma logs a warning when D3 is enabled for
-them.
+and rejects D3. The other UMA models, the ORB `*_omol` models and SevenNet's
+`omol25_*` modals are trained on ωB97M-V, which also includes it, so gpuma logs
+a warning when D3 is enabled for them.
 
 DFT-D3(BJ) dispersion correction is supported for the ORB-v3,
 Fairchem/UMA, and SevenNet backends.  Internally ORB uses orb-models' native
@@ -200,7 +200,7 @@ technical:
 | `huggingface_token_file` | `null` | File path to read the HF token from |
 | `d3_correction` | `false` | Enable D3 dispersion correction. Supported for the ORB, Fairchem/UMA, and SevenNet backends; rejected for `uma-s-1p2p1-ft-d4rev` |
 | `d3_functional` | `"PBE"` | DFT functional for D3 correction (ORB/Fairchem use the orb-models BJ-damping table; SevenNet uses its own native D3) |
-| `d3_damping` | `"BJ"` | Damping scheme for D3 correction (`"BJ"` or `"BJM"`) |
+| `d3_damping` | `"BJ"` | Damping scheme for D3 correction (`"BJ"` or `"BJM"`). SevenNet supports only `"BJ"` |
 
 ### `conformer_generation`
 
@@ -213,8 +213,8 @@ technical:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `device` | `"cuda"` | `"cpu"`, `"cuda"`, or `"cuda:N"` (e.g. `"cuda:0"`). A GPU index that doesn't exist, or CUDA without a usable GPU, is an error |
-| `max_memory_padding` | `0.95` | Fraction of GPU memory the autobatcher is allowed to fill during calibration. Lower = more headroom, smaller batches |
+| `device` | `"cuda"` (`"cpu"` if no GPU is visible) | `"cpu"`, `"cuda"`, or `"cuda:N"` (e.g. `"cuda:0"`). A GPU index that doesn't exist, or CUDA without a usable GPU, is an error |
+| `max_memory_padding` | `0.95` | Fraction of GPU memory the autobatcher is allowed to fill during calibration. Lower = more headroom, smaller batches. Must be between 0.05 and 0.95 |
 | `memory_scaling_factor` | `1.75` | Factor by which the autobatcher grows the probe size during calibration. Larger = faster calibration but coarser final batch size; smaller = slower but tighter. A job runs as one batch without probing only if its forward-pass peak times this factor fits in `max_memory_padding` of free memory. Must be > 1 |
 | `max_atoms_to_try` | `100000` | Upper bound on the autobatcher's calibration probe size (atoms) |
 | `memory_scales_with` | `"auto"` | Per-structure memory metric for batch sizing: `"n_atoms"`, `"n_edges"` or `"auto"`. `"auto"` uses `n_atoms` for UMA, whose large fixed memory per structure makes edge counts overcharge small molecules, and `n_edges` for ORB and SevenNet |
@@ -278,7 +278,7 @@ instead be supplied via `model_path`.
 | `7net-omni-i8` | SevenNet Omni i8 (multi-modal) |
 | `7net-omni-i12` | SevenNet Omni i12 (multi-modal) |
 
-> D3 dispersion correction can be enabled for any ORB, Fairchem/UMA, or SevenNet model with `d3_correction: true`, except `uma-s-1p2p1-ft-d4rev`. gpuma warns when it is enabled for UMA or ORB `*_omol` models.
+> D3 dispersion correction can be enabled for any ORB, Fairchem/UMA, or SevenNet model with `d3_correction: true`, except `uma-s-1p2p1-ft-d4rev`. gpuma warns when it is enabled for UMA, ORB `*_omol` models or SevenNet `omol25_*` modals; SevenNet supports only BJ damping.
 
 These model names are also available programmatically as
 `gpuma.AVAILABLE_FAIRCHEM_MODELS`, `gpuma.AVAILABLE_ORB_MODELS`, and

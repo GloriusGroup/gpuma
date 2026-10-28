@@ -62,6 +62,7 @@ def test_old_driver_names_torch_build(no_cuda, monkeypatch):
     monkeypatch.setattr(torch.cuda, "init", init)
     check = _by_name(run_checks(_orb("cuda")))["cuda"]
     assert "driver is too old" in check.detail and "cu126" in check.hint
+    assert "--force-reinstall" in check.hint and "--reinstall-package torch" in check.hint
 
 
 def test_old_driver_with_cuda12_build_suggests_driver_update(no_cuda, monkeypatch):
@@ -72,6 +73,7 @@ def test_old_driver_with_cuda12_build_suggests_driver_update(no_cuda, monkeypatc
     monkeypatch.setattr(torch.cuda, "init", init)
     check = _by_name(run_checks(_orb("cuda")))["cuda"]
     assert "driver is too old" in check.detail and "cu126" not in check.hint
+    assert check.hint.startswith("Update the NVIDIA driver")
 
 
 def test_uma_without_token_is_fail(two_gpus, no_token):

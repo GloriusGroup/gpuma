@@ -42,7 +42,7 @@ gpuma convert --smiles "CCO" --output examples/example_output/cli_no_optimizatio
 gpuma generate --smiles "c1ccccc1" --conformers 5 --output examples/example_output/cli_conformer_generation.xyz --config examples/config.json
 
 # Create or validate configuration files
-gpuma config --create examples/config.json
+gpuma config --create my_config.json
 gpuma config --validate examples/config.json
 
 # Verbose vs. quiet (set in config file)
@@ -61,8 +61,10 @@ gpuma smiles --smiles "CCO" --output examples/example_output/ethanol_opt.xyz --c
 
 ### Using ORB-v3 models
 
-To use ORB-v3 instead of Fairchem UMA, either set `"model_type": "orb"` in
-your config file (see `examples/config_orb.json`) or override from the CLI:
+To use ORB-v3 instead of Fairchem UMA, set `"model_type": "orb"` and an ORB
+`model_name` in your config file (see `examples/config_orb.json`).
+`--model-type orb` only switches the backend; the config must still name an ORB
+model, otherwise the run stops with exit code 3:
 
 ```bash
 # Single optimization with ORB-v3
@@ -167,6 +169,13 @@ The summary contains:
 | `diagnostics` | The engine diagnostic report (embedding and optimization events, convergence where known) |
 | `error` | `{"type", "message"}` when the command failed, else `null` |
 | `wall_time_s`, `gpuma_version`, `schema_version` | Run metadata |
+| `checks`, `recommended_device` | `doctor` only: each check (`name`, `status`, `detail`, `hint`, `data`) and the GPU to use |
+| `schema` | `config --schema` only: the JSON Schema of the config |
+| `installed` | `skills install` only: the paths the skill was written to |
+
+`config --show --json` puts the resolved config only in `config`. A usage error
+(exit code 2) also prints a summary, with `error.type` `UsageError` and `device`,
+`model` and `config` set to `null`.
 
 | Exit code | Meaning |
 | --- | --- |

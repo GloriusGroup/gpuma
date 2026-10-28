@@ -124,7 +124,7 @@ def check_model_path(config: Config) -> None:
 
 
 def check_d3_allowed(config: Config) -> None:
-    """Raise if D3 is requested for a model that already includes dispersion."""
+    """Raise if D3 would count dispersion twice or uses damping the backend lacks."""
     model_type, name = _named_model(config)
     if (
         config.model.get("d3_correction")
@@ -132,17 +132,23 @@ def check_d3_allowed(config: Config) -> None:
         and name in DISPERSION_INCLUDED_MODELS
     ):
         raise ValueError(f"{name} already includes dispersion; set model.d3_correction to false")
+    damping = str(config.model.get("d3_damping") or "").strip().upper()
+    if config.model.get("d3_correction") and model_type == "sevennet" and damping != "BJ":
+        raise ValueError(f"SevenNet's D3 only supports BJ damping; got d3_damping {damping!r}")
 
 
 def warn_d3_double_counting(config: Config) -> None:
     """Warn when D3 is added to a model trained on ωB97M-V, whose labels include dispersion."""
     model_type, name = _named_model(config)
-    if (model_type == "fairchem" and name in WB97MV_UMA_MODELS) or (
-        model_type == "orb" and name.endswith("_omol")
+    modal = str(config.model.get("model_modal") or "")
+    if (
+        (model_type == "fairchem" and name in WB97MV_UMA_MODELS)
+        or (model_type == "orb" and name.endswith("_omol"))
+        or (model_type == "sevennet" and modal.startswith("omol25"))
     ):
         logger.warning(
             "D3 on %s counts dispersion twice: its ωB97M-V training data already includes it",
-            name,
+            f"{name} ({modal})" if model_type == "sevennet" else name,
         )
 
 
@@ -329,7 +335,7 @@ def _read_config_file(filepath: str) -> dict[str, Any]:
             raise ValueError("Config file must be JSON or YAML format")
 
 
-def load_config_from_file(filepath: str = "config.json") -> Config:
+def load_config_from_file(filepath: str | None = None) -> Config:
     """Load configuration from a JSON/YAML file and deep-merge with defaults.
 
     This function caches the raw dictionary loaded from the file to avoid
@@ -337,13 +343,20 @@ def load_config_from_file(filepath: str = "config.json") -> Config:
     instance, safe to modify.
 
     Args:
-        filepath: Path to the config file. If it doesn't exist, defaults are used.
+        filepath: Path to the config file. ``None`` reads ``./config.json`` if it
+            exists and uses the defaults otherwise; a given path must exist.
 
     Returns:
         A :class:`Config` instance with data merged with :data:`DEFAULT_CONFIG`.
         Unknown keys are preserved.
 
     """
+    if filepath is None:
+        filepath = "config.json"
+        if not os.path.exists(filepath):
+            return Config()
+    elif not os.path.exists(filepath):
+        raise FileNotFoundError(f"Configuration file not found: {filepath}")
     user_cfg = _read_config_file(filepath)
 
     if user_cfg is not None and not isinstance(user_cfg, dict):
@@ -462,6 +475,23 @@ def validate_config(config: Config) -> None:
             f"got {scales_with!r}"
         )
     tech.memory_scales_with = scales_with
+
+    # Autobatcher: the probe must grow, and padding must leave some headroom
+    factor = getattr(tech, "memory_scaling_factor", None)
+    try:
+        if float(factor) <= 1:
+            raise ValueError
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"memory_scaling_factor must be a number > 1, got {factor!r}") from exc
+
+    padding = getattr(tech, "max_memory_padding", None)
+    try:
+        if not 0.05 <= float(padding) <= 0.95:
+            raise ValueError
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"max_memory_padding must be between 0.05 and 0.95, got {padding!r}"
+        ) from exc
 
     # CUDA availability is checked at use (models.device), so configs stay portable.
 

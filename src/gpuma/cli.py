@@ -38,6 +38,7 @@ from .cli_report import (
     EXIT_INVALID_INPUT,
     EXIT_OK,
     EXIT_PARTIAL,
+    EXIT_USAGE,
     CommandResult,
     build_summary,
     exit_code_for,
@@ -55,7 +56,7 @@ from .config import (
 )
 from .config_schema import config_json_schema
 from .doctor import recommended_device, run_checks
-from .models.base import AVAILABLE_SEVENNET_MODELS
+from .models.base import AVAILABLE_FAIRCHEM_MODELS, AVAILABLE_SEVENNET_MODELS
 from .models.device import _parse_device_string
 from .utils.io_handler import (
     read_multi_xyz,
@@ -73,6 +74,23 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 logger = logging.getLogger(__name__)
+
+
+class _UsageError(SystemExit):
+    """An argparse usage error; still a ``SystemExit(2)``, but it keeps the message."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(EXIT_USAGE)
+        self.message = message
+
+
+class _Parser(argparse.ArgumentParser):
+    """ArgumentParser whose errors main() can report in the ``--json`` summary."""
+
+    def error(self, message: str):
+        self.print_usage(sys.stderr)
+        print(f"{self.prog}: error: {message}", file=sys.stderr)
+        raise _UsageError(message)
 
 
 def _level_from_string(name: str) -> int:
@@ -168,7 +186,7 @@ def setup_parser() -> argparse.ArgumentParser:
         options.
 
     """
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         parents=[_global_options_parser(defaults=True)],
         description=(
             "GPUMA - Optimize molecular structures using Fairchem UMA, ORB-v3 or SevenNet models"
@@ -232,7 +250,7 @@ UTILITY COMMANDS:
         "--multiplicity",
         type=int,
         default=None,
-        help="Spin multiplicity for XYZ input (ignored for SMILES). Default: from config",
+        help="Spin multiplicity for XYZ or SMILES input. Default: from config",
     )
     optimize_parser.add_argument(
         "--output",
@@ -431,7 +449,7 @@ UTILITY COMMANDS:
     config_group.add_argument(
         "--create",
         type=str,
-        help="Create default configuration file at specified path",
+        help="Write the built-in defaults to a new file (refuses to overwrite)",
     )
     config_group.add_argument(
         "--validate",
@@ -642,7 +660,9 @@ def _known_model_names(model_type: str) -> set[str]:
     if model_type == "fairchem":
         from fairchem.core import pretrained_mlip
 
-        return set(pretrained_mlip.available_models)
+        # gpuma runs the omol task only; r2scan, OC25 and ODAC25 models lack it.
+        omol = {name for name in pretrained_mlip.available_models if name.endswith("-omol")}
+        return set(AVAILABLE_FAIRCHEM_MODELS) | omol
     return set(AVAILABLE_SEVENNET_MODELS)
 
 
@@ -654,7 +674,7 @@ def _check_model(config: Config) -> None:
     name = config.model.model_name
     if name not in _known_model_names(model_type):
         raise ValueError(
-            f"Unknown {model_type} model_name {name!r}; for model_type {model_type!r} "
+            f"Unsupported {model_type} model_name {name!r}; for model_type {model_type!r} "
             f"use e.g. {_DEFAULT_MODEL_NAMES[model_type]!r}."
         )
 
@@ -825,8 +845,10 @@ def cmd_config(args, config: Config) -> CommandResult:
         extra = {"schema": data} if args.schema else {}
         return CommandResult("config", "ok", EXIT_OK, extra=extra)
     if args.create:
+        if os.path.exists(args.create):
+            raise FileExistsError(f"{args.create} already exists; remove it or pick another path")
         logger.info("Creating default configuration file at %s", args.create)
-        save_config_to_file(config, args.create)
+        save_config_to_file(Config(), args.create)
         logger.info("Configuration file created")
         return CommandResult("config", "ok", EXIT_OK, output_file=args.create)
     if not os.path.exists(args.validate):
@@ -926,7 +948,7 @@ _NO_CONFIG_COMMANDS = ("skills",)
 def _load_config(args, parser: argparse.ArgumentParser) -> Config:
     """Load the config and apply the global CLI overrides and logging level."""
     cfg_path, using_defaults = _resolve_config_path(args, parser)
-    config = load_config_from_file(cfg_path)
+    config = load_config_from_file(None if using_defaults else cfg_path)
 
     _apply_global_verbosity_flags(config, args.verbose, args.quiet)
     _apply_device_override(config, args.device)
@@ -983,6 +1005,20 @@ def main(argv=None) -> int:
         Exit status code (see :mod:`gpuma.cli_report`).
 
     """
+    argv = sys.argv[1:] if argv is None else list(argv)
+    try:
+        return _main(argv)
+    except _UsageError as exc:
+        if "--json" in argv:
+            command = next((a for a in argv if a in _HANDLERS), None)
+            error = {"type": "UsageError", "message": exc.message}
+            result = CommandResult(command, "error", EXIT_USAGE, error=error)
+            print(json.dumps(build_summary(result, None, 0.0, None)), flush=True)
+        raise
+
+
+def _main(argv: list[str]) -> int:
+    """Parse ``argv`` and run the command; return the exit code."""
     parser = setup_parser()
     args = parser.parse_args(argv)
 

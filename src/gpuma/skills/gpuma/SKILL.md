@@ -56,7 +56,7 @@ no job scheduler.
    Note the process ID that `echo $!` prints and check progress with
    `tail -n 5 run.log`. The run has finished once `kill -0 <pid>` fails. Then
    read `summary.json`; if it is empty, the process died before writing it
-   (killed, out of memory, or a command-line error), and `run.log` says why.
+   (killed or out of memory), and `run.log` says why.
    Never start a second gpuma run on the same GPU while one is running.
 6. **Report back** from `summary.json`: `status`, `n_input` and `n_returned`,
    `structures[].energy_ev`, and anything unusual in `diagnostics`. Energies are

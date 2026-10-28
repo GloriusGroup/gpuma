@@ -266,6 +266,17 @@ def test_loader_rejects_checkpoint_removed_after_validation(tmp_path):
         load_calculator(config)
 
 
+def test_require_omol_rejects_model_without_omol_task():
+    """A checkpoint without the omol task must fail at load, not mid-optimization."""
+    from types import SimpleNamespace
+
+    from gpuma.models.fairchem import _require_omol
+
+    with pytest.raises(ValueError, match="no omol task"):
+        _require_omol(SimpleNamespace(dataset_to_tasks={"omat": []}))
+    _require_omol(SimpleNamespace(dataset_to_tasks={"omol": [], "omat": []}))
+
+
 class TestFairchemLocalCheckpoint:
     """A config supplying only ``model_path`` must work on both paths.
 
@@ -291,9 +302,11 @@ class TestFairchemLocalCheckpoint:
         was called unconditionally, so this config failed in batch mode while
         working in sequential mode.
         """
+        from types import SimpleNamespace
+
         import torch_sim.models.fairchem as ts_fairchem
 
-        sentinel = object()
+        sentinel = SimpleNamespace(predictor=SimpleNamespace(dataset_to_tasks={"omol": []}))
         seen = {}
 
         def fake_model(**kwargs):
@@ -309,12 +322,13 @@ class TestFairchemLocalCheckpoint:
 
     def test_calculator_accepts_checkpoint_without_model_name(self, tmp_path, monkeypatch):
         """The sequential path already worked; pin it so the two stay in step."""
+        from types import SimpleNamespace
+
         import fairchem.core as fc
 
         sentinel = object()
-        monkeypatch.setattr(
-            fc.pretrained_mlip, "load_predict_unit", lambda **kw: sentinel
-        )
+        predictor = SimpleNamespace(dataset_to_tasks={"omol": []})
+        monkeypatch.setattr(fc.pretrained_mlip, "load_predict_unit", lambda **kw: predictor)
         monkeypatch.setattr(fc, "FAIRChemCalculator", lambda **kw: sentinel)
 
         from gpuma.models.fairchem import _load_fairchem_calculator

@@ -20,8 +20,13 @@ GPUMA and reports back. You don't need to know Python.
 
     ```bash
     curl -LsSf https://astral.sh/uv/install.sh | sh   # only if uv is missing
-    uv tool install gpuma
+    uv tool install gpuma --python 3.12 \
+        --index https://download.pytorch.org/whl/cu126 --index-strategy unsafe-best-match
     ```
+
+    The extra index gives torch's CUDA 12.6 build, which runs on NVIDIA drivers
+    from 525 on. Without it uv installs PyPI's default torch build, which needs
+    driver 580 or newer.
 
 3. **Install the skill** for your agents:
 
@@ -66,7 +71,8 @@ Reinstall the skill after each upgrade, so the agent's instructions match the
 installed version:
 
 ```bash
-uv tool upgrade gpuma
+uv tool install --upgrade gpuma --python 3.12 \
+    --index https://download.pytorch.org/whl/cu126 --index-strategy unsafe-best-match
 gpuma skills install
 ```
 
