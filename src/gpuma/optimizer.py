@@ -80,9 +80,9 @@ def _config_from_key(key: str) -> Config:
 
 
 @functools.lru_cache(maxsize=2)
-def _load_calculator_cached(key: str) -> Any:
+def _load_calculator_cached(key: str, single_structure: bool = False) -> Any:
     """Cached calculator loading (hashable arg required by lru_cache)."""
-    return load_calculator(_config_from_key(key))
+    return load_calculator(_config_from_key(key), single_structure=single_structure)
 
 
 @functools.lru_cache(maxsize=2)
@@ -98,9 +98,11 @@ def _select_gpu(config: Config) -> None:
         torch.cuda.set_device(int(device.split(":")[1]))
 
 
-def _get_cached_calculator(config: Config) -> Any:
+def _get_cached_calculator(config: Config, single_structure: bool = False) -> Any:
     """Return a cached ASE calculator for the given configuration."""
-    calculator = _load_calculator_cached(_cache_key(config))
+    # Only Fairchem loads differently for one structure; others share one cache entry.
+    single_structure = single_structure and resolve_model_type(config) == "fairchem"
+    calculator = _load_calculator_cached(_cache_key(config), single_structure)
     _select_gpu(config)
     return calculator
 
@@ -219,8 +221,8 @@ def optimize_single_structure(
         Configuration controlling the model and convergence settings.
         Defaults to :func:`load_config_from_file` if not provided.
     calculator : optional
-        Pre-loaded ASE calculator. If ``None``, one is loaded (and cached)
-        from the configuration.
+        Pre-loaded ASE calculator. If ``None``, one is loaded (and cached) for a
+        single structure, so Fairchem uses its default inference settings.
 
     Returns
     -------
@@ -240,7 +242,7 @@ def optimize_single_structure(
 
     try:
         if calculator is None:
-            calculator = _get_cached_calculator(config)
+            calculator = _get_cached_calculator(config, single_structure=True)
 
         atoms = Atoms(symbols=structure.symbols, positions=structure.coordinates)
         atoms.calc = calculator
