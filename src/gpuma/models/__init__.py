@@ -99,7 +99,7 @@ __all__ = [
 
 
 @time_it
-def load_calculator(config: Config):
+def load_calculator(config: Config, single_structure: bool = False):
     """Load an ASE-compatible calculator for single-structure optimization.
 
     Dispatches to the Fairchem, ORB-v3, or SevenNet backend based on
@@ -109,6 +109,9 @@ def load_calculator(config: Config):
     ----------
     config : Config
         GPUMA configuration object.
+    single_structure : bool
+        The calculator serves one structure only; Fairchem then uses its default
+        inference settings instead of "batch".
 
     Returns
     -------
@@ -128,7 +131,7 @@ def load_calculator(config: Config):
         return _load_orb_calculator(config)
     if model_type == "sevennet":
         return _load_sevennet_calculator(config)
-    return _load_fairchem_calculator(config)
+    return _load_fairchem_calculator(config, single_structure)
 
 
 @time_it

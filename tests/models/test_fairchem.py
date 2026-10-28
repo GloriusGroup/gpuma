@@ -359,9 +359,10 @@ def test_d3_build_rejects_dispersion_included_model():
         _build_d3_dispersion_model(config, torch.device("cpu"), torch.float64, compute_stress=False)
 
 
+@pytest.mark.parametrize(("single_structure", "settings"), [(False, "batch"), (True, "default")])
 @pytest.mark.parametrize("loader", ["get_predict_unit", "load_predict_unit"])
-def test_calculator_uses_batch_inference_settings(monkeypatch, tmp_path, loader):
-    """Both ASE-path loaders ask fairchem for the "batch" settings, like torch-sim does."""
+def test_calculator_inference_settings(monkeypatch, tmp_path, loader, single_structure, settings):
+    """fairchem's default settings for one structure, "batch" for many (as torch-sim uses)."""
     from fairchem.core import pretrained_mlip
 
     seen = {}
@@ -378,5 +379,5 @@ def test_calculator_uses_batch_inference_settings(monkeypatch, tmp_path, loader)
         model["model_path"] = str(checkpoint)
     config = Config({"model": model, "technical": {"device": "cpu"}})
     with pytest.raises(RuntimeError, match="stop"):
-        load_calculator(config)
-    assert seen["inference_settings"] == "batch"
+        load_calculator(config, single_structure=single_structure)
+    assert seen["inference_settings"] == settings
