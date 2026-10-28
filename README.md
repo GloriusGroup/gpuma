@@ -139,7 +139,7 @@ Also check the [examples/](examples) folder in the repository for sample config 
 - [examples/example_dispersion.py](examples/example_dispersion.py) – DFT-D3(BJ) correction with Fairchem and ORB (single + batch)
 
 > **Required for UMA models:**</br>
-> To access the UMA models on Hugging Face, **you must provide a token** either via the `HUGGINGFACE_TOKEN` environment variable or via the config (direct token string or path to a file containing the token).
+> To access the UMA models on Hugging Face, **you must provide a token** either via the `HF_TOKEN` environment variable or via the config (direct token string or path to a file containing the token).
 
 ## Using with AI agents
 

@@ -33,7 +33,7 @@ BUTENE_TRIPLET_MULTI_XYZ = TEST_DATA_DIR / "butene_triplet_multi.xyz"
 
 def has_hf_token() -> bool:
     """Check whether a HuggingFace token is available."""
-    return bool(os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN"))
+    return bool(os.environ.get("HF_TOKEN"))
 
 
 requires_gpu = pytest.mark.skipif(

@@ -35,7 +35,7 @@ Feedback and improvements are always welcome!
 ## Installation
 
 > **Required for UMA models:**</br>
-> To access the UMA models on Hugging Face, **you must provide a token** either via the `HUGGINGFACE_TOKEN` environment variable or via the config (direct token string or path to a file containing the token).
+> To access the UMA models on Hugging Face, **you must provide a token** either via the `HF_TOKEN` environment variable or via the config (direct token string or path to a file containing the token).
 
 ### Option 1: Install from PyPI (recommended)
 

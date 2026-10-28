@@ -34,7 +34,6 @@ def two_gpus(monkeypatch):
 @pytest.fixture
 def no_token(monkeypatch):
     monkeypatch.delenv("HF_TOKEN", raising=False)
-    monkeypatch.delenv("HUGGINGFACE_TOKEN", raising=False)
     monkeypatch.setattr(doctor, "_hub_token", lambda: None)
 
 
@@ -85,6 +84,13 @@ def test_uma_with_env_token_is_ok(two_gpus, no_token, monkeypatch):
     monkeypatch.setenv("HF_TOKEN", "hf_x")
     config = Config({"model": {"model_type": "fairchem"}, "technical": {"device": "cuda:1"}})
     assert _by_name(run_checks(config))["hf_token"].status == "ok"
+
+
+def test_uma_ignores_huggingface_token_env(two_gpus, no_token, monkeypatch):
+    """huggingface_hub doesn't read HUGGINGFACE_TOKEN, so doctor must not count it."""
+    monkeypatch.setenv("HUGGINGFACE_TOKEN", "hf_x")
+    config = Config({"model": {"model_type": "fairchem"}, "technical": {"device": "cuda:1"}})
+    assert _by_name(run_checks(config))["hf_token"].status == "fail"
 
 
 def test_orb_skips_token_check(two_gpus, no_token):

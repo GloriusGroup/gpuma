@@ -198,7 +198,6 @@ def _check_hf_token(config: Config) -> Check | None:
     sources = {
         "config": config.model.get_huggingface_token(),
         "HF_TOKEN": os.environ.get("HF_TOKEN"),
-        "HUGGINGFACE_TOKEN": os.environ.get("HUGGINGFACE_TOKEN"),
         "huggingface-cli login": _hub_token(),
     }
     found = [name for name, token in sources.items() if token]
@@ -209,7 +208,7 @@ def _check_hf_token(config: Config) -> Check | None:
         "fail",
         "UMA models need a Hugging Face token; none found",
         hint=(
-            "Set model.huggingface_token_file, or use model_type orb with model_name "
+            "Set HF_TOKEN or model.huggingface_token_file, or use model_type orb with model_name "
             "orb_v3_direct_omol, which needs no token."
         ),
     )
