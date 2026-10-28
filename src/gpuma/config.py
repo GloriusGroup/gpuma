@@ -112,6 +112,17 @@ def _named_model(config: Config) -> tuple[str, str]:
     return model_type, str(config.model.get("model_name") or "").strip()
 
 
+def check_model_path(config: Config) -> None:
+    """Raise if ``model_path`` is set but missing, or set for ORB, which only loads names."""
+    path = config.model.get("model_path")
+    if not path:
+        return
+    if resolve_model_type(config) == "orb":
+        raise ValueError("model_path is not supported for model_type 'orb'; use model_name")
+    if not os.path.exists(str(path)):
+        raise ValueError(f"model_path {str(path)!r} does not exist")
+
+
 def check_d3_allowed(config: Config) -> None:
     """Raise if D3 is requested for a model that already includes dispersion."""
     model_type, name = _named_model(config)
@@ -387,6 +398,7 @@ def validate_config(config: Config) -> None:
             f"Unknown model_type {raw_model_type!r}. Must be one of: {sorted(VALID_MODEL_TYPES)}"
         )
 
+    check_model_path(config)
     check_d3_allowed(config)
 
     # Batch optimizer must be a known value; a missing one means "fire"

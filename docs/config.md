@@ -194,7 +194,7 @@ technical:
 | `model_type` | `"fairchem"` | Backend: `"fairchem"` / `"uma"`, `"orb"` / `"orb-v3"`, or `"sevennet"` / `"7net"` |
 | `model_name` | `"uma-s-1p2p1-ft-d4rev"` | Model identifier (see [Available Models](#available-models)) |
 | `model_modal` | `null` | SevenNet multi-modal fidelity selector. Valid values depend on the checkpoint (`7net-omni`: e.g. `"omol25_high"`, `"omol25_low"`, `"spice"`, `"qcml"`; `7net-mf-ompa`: `"mpa"`, `"omat24"`). Required for multi-modal checkpoints; ignored by single-modal checkpoints and by other backends |
-| `model_path` | `null` | Local checkpoint path (Fairchem and SevenNet; overrides `model_name`) |
+| `model_path` | `null` | Local checkpoint path (Fairchem and SevenNet; overrides `model_name`). A path that doesn't exist, or one set for ORB, is an error |
 | `model_cache_dir` | `null` | Directory for cached model downloads |
 | `huggingface_token` | `null` | HuggingFace token for model access |
 | `huggingface_token_file` | `null` | File path to read the HF token from |

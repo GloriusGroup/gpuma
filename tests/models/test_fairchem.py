@@ -256,6 +256,16 @@ class TestFairchemD3Caching:
         assert wrapper.calculation_required(atoms, ("energy",)) is True
 
 
+def test_loader_rejects_checkpoint_removed_after_validation(tmp_path):
+    """The loader re-checks model_path instead of falling back to model_name."""
+    ckpt = tmp_path / "uma.pt"
+    ckpt.write_bytes(b"")
+    config = Config({"model": {"model_type": "fairchem", "model_path": str(ckpt)}})
+    ckpt.unlink()
+    with pytest.raises(ValueError, match="does not exist"):
+        load_calculator(config)
+
+
 class TestFairchemLocalCheckpoint:
     """A config supplying only ``model_path`` must work on both paths.
 

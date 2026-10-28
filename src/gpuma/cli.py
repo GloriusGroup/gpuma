@@ -45,7 +45,14 @@ from .cli_report import (
     stdout_to_stderr,
     structure_record,
 )
-from .config import Config, load_config_from_file, resolve_model_type, save_config_to_file
+from .config import (
+    Config,
+    check_d3_allowed,
+    check_model_path,
+    load_config_from_file,
+    resolve_model_type,
+    save_config_to_file,
+)
 from .config_schema import config_json_schema
 from .doctor import recommended_device, run_checks
 from .models.base import AVAILABLE_SEVENNET_MODELS
@@ -654,6 +661,9 @@ def _check_model(config: Config) -> None:
 
 def _check_inputs(args, config: Config) -> int:
     """Validate inputs, model and device without loading a model; return ``n_input``."""
+    # CLI overrides apply after Config validation, so re-check what they can change.
+    check_model_path(config)
+    check_d3_allowed(config)
     _check_model(config)
     _parse_device_string(str(config.technical.device))
     charge = int(config.optimization.charge)

@@ -460,17 +460,35 @@ def test_d3_double_counting_warning(caplog, model_type, model_name, warns):
     [
         {"model_type": "sevennet", "d3_correction": True},
         {"model_type": "orb", "d3_correction": True},
-        {"model_type": "fairchem", "model_path": "/ckpt.pt", "d3_correction": True},
+        {"model_type": "fairchem", "model_path": "ckpt.pt", "d3_correction": True},
     ],
 )
-def test_d3_allowed_when_default_name_does_not_apply(model):
+def test_d3_allowed_when_default_name_does_not_apply(model, tmp_path, monkeypatch):
     """The d4rev default name doesn't block D3 for other backends or local checkpoints."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "ckpt.pt").write_bytes(b"")
     assert Config({"model": model}).model.d3_correction is True
 
 
-def test_d3_warning_skips_local_checkpoint(caplog):
+def test_d3_warning_skips_local_checkpoint(caplog, tmp_path):
     """A local checkpoint has no known training data, so there is no D3 warning."""
-    cfg = Config({"model": {"model_type": "fairchem", "model_path": "/ckpt.pt"}})
+    ckpt = tmp_path / "ckpt.pt"
+    ckpt.write_bytes(b"")
+    cfg = Config({"model": {"model_type": "fairchem", "model_path": str(ckpt)}})
     with caplog.at_level("WARNING", logger="gpuma.config"):
         warn_d3_double_counting(cfg)
     assert "counts dispersion twice" not in caplog.text
+
+
+def test_missing_model_path_is_error():
+    """A checkpoint path that doesn't exist must not fall back to model_name."""
+    with pytest.raises(ValueError, match="does not exist"):
+        Config({"model": {"model_type": "fairchem", "model_path": "/no/such/ckpt.pt"}})
+
+
+def test_model_path_with_orb_is_error(tmp_path):
+    """ORB only loads pretrained names, so a checkpoint path is rejected."""
+    ckpt = tmp_path / "orb.pt"
+    ckpt.write_bytes(b"")
+    with pytest.raises(ValueError, match="not supported for model_type 'orb'"):
+        Config({"model": {"model_type": "orb", "model_path": str(ckpt)}})
