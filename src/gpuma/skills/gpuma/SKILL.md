@@ -1,6 +1,6 @@
 ---
 name: gpuma
-description: Optimize molecular geometries and conformer ensembles on the GPU with gpuma, using machine-learned interatomic potentials (Fairchem UMA, ORB-v3, SevenNet). Use when the user wants to relax or optimize structures from SMILES or XYZ files, generate and optimize conformers, find the lowest-energy conformer, batch-optimize many molecules, choose a model or optimizer, write a gpuma config, or find out why a gpuma run failed.
+description: Optimize molecular geometries and conformer ensembles on the GPU with gpuma, using machine-learned interatomic potentials (Fairchem UMA, ORB-v3, SevenNet, AIMNet2). Use when the user wants to relax or optimize structures from SMILES or XYZ files, generate and optimize conformers, find the lowest-energy conformer, batch-optimize many molecules, choose a model or optimizer, write a gpuma config, or find out why a gpuma run failed.
 ---
 
 # Running gpuma

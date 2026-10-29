@@ -97,11 +97,28 @@ For multi-modal checkpoints such as `7net-omni` or `7net-mf-ompa`, a
 }
 ```
 
+## Minimal Example (JSON, AIMNet2)
+
+Use `aimnet2-nse` for open-shell structures; `aimnet2` and `aimnet2-2025` are
+closed-shell only.
+
+```json
+{
+  "model": {
+    "model_type": "aimnet",
+    "model_name": "aimnet2"
+  },
+  "technical": {
+    "device": "cuda"
+  }
+}
+```
+
 ## D3 Dispersion Correction
 
 D3 is off by default and adds GPU memory per batch; enable it only for models
-trained without dispersion. `uma-s-1p2p1-ft-d4rev` already includes dispersion
-and rejects D3. The other UMA models, the ORB `*_omol` models and SevenNet's
+trained without dispersion. `uma-s-1p2p1-ft-d4rev` and the AIMNet2 models
+already include dispersion and reject D3. The other UMA models, the ORB `*_omol` models and SevenNet's
 `omol25_*` modals are trained on ωB97M-V, which also includes it, so gpuma logs
 a warning when D3 is enabled for them.
 
@@ -194,14 +211,14 @@ technical:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `model_type` | `"fairchem"` | Backend: `"fairchem"` / `"uma"`, `"orb"` / `"orb-v3"`, or `"sevennet"` / `"7net"` |
+| `model_type` | `"fairchem"` | Backend: `"fairchem"` / `"uma"`, `"orb"` / `"orb-v3"`, `"sevennet"` / `"7net"`, or `"aimnet"` / `"aimnet2"` |
 | `model_name` | `"uma-s-1p2p1-ft-d4rev"` | Model identifier (see [Available Models](#available-models)) |
 | `model_modal` | `null` | SevenNet multi-modal fidelity selector. Valid values depend on the checkpoint (`7net-omni`: e.g. `"omol25_high"`, `"omol25_low"`, `"spice"`, `"qcml"`; `7net-mf-ompa`: `"mpa"`, `"omat24"`). Required for multi-modal checkpoints; ignored by single-modal checkpoints and by other backends |
-| `model_path` | `null` | Local checkpoint path (Fairchem and SevenNet; overrides `model_name`). A path that doesn't exist, or one set for ORB, is an error |
-| `model_cache_dir` | `null` | Directory for cached model downloads (Fairchem only; ORB and SevenNet use their own caches, so setting it for them is an error). A directory that can't be created is an error |
+| `model_path` | `null` | Local checkpoint path (Fairchem and SevenNet; overrides `model_name`). A path that doesn't exist, or one set for ORB or AIMNet2, is an error |
+| `model_cache_dir` | `null` | Directory for cached model downloads (Fairchem and AIMNet2, which gpuma points there via `AIMNET_CACHE_DIR`; ORB and SevenNet use their own caches, so setting it for them is an error). A directory that can't be created is an error |
 | `huggingface_token` | `null` | HuggingFace token for model access |
 | `huggingface_token_file` | `null` | File path to read the HF token from |
-| `d3_correction` | `false` | Enable D3 dispersion correction. Supported for the ORB, Fairchem/UMA, and SevenNet backends; rejected for `uma-s-1p2p1-ft-d4rev` |
+| `d3_correction` | `false` | Enable D3 dispersion correction. Supported for the ORB, Fairchem/UMA, and SevenNet backends; rejected for `uma-s-1p2p1-ft-d4rev` and AIMNet2 |
 | `d3_functional` | `"PBE"` | DFT functional for D3 correction (ORB/Fairchem use the orb-models BJ-damping table; SevenNet uses its own native D3) |
 | `d3_damping` | `"BJ"` | Damping scheme for D3 correction (`"BJ"` or `"BJM"`). SevenNet supports only `"BJ"` |
 
@@ -220,7 +237,7 @@ technical:
 | `max_memory_padding` | `0.95` | Fraction of GPU memory the autobatcher is allowed to fill during calibration. Lower = more headroom, smaller batches. Must be between 0.05 and 0.95 |
 | `memory_scaling_factor` | `1.75` | Factor by which the autobatcher grows the probe size during calibration. Larger = faster calibration but coarser final batch size; smaller = slower but tighter. A job runs as one batch without probing only if its forward-pass peak times this factor fits in `max_memory_padding` of free memory. Must be > 1 |
 | `max_atoms_to_try` | `100000` | Upper bound on the autobatcher's calibration probe size (atoms) |
-| `memory_scales_with` | `"auto"` | Per-structure memory metric for batch sizing: `"n_atoms"`, `"n_edges"` or `"auto"`. `"auto"` uses `n_atoms` for UMA, whose large fixed memory per structure makes edge counts overcharge small molecules, and `n_edges` for ORB and SevenNet |
+| `memory_scales_with` | `"auto"` | Per-structure memory metric for batch sizing: `"n_atoms"`, `"n_edges"` or `"auto"`. `"auto"` uses `n_atoms` for UMA, whose large fixed memory per structure makes edge counts overcharge small molecules, and for AIMNet2, whose Coulomb term grows with the square of the batch's atom count; `n_edges` for ORB and SevenNet |
 | `steps_between_swaps` | `1` | Optimization steps between batch swaps in the in-flight autobatcher. `1` is fastest on this codebase's screenings (uma-s/uma-m/orb); higher values are monotonically slower. Must be at least 1 |
 | `logging_level` | `"INFO"` | Logging verbosity: `"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"`, `"CRITICAL"` |
 
@@ -281,11 +298,27 @@ instead be supplied via `model_path`.
 | `7net-omni-i8` | SevenNet Omni i8 (multi-modal) |
 | `7net-omni-i12` | SevenNet Omni i12 (multi-modal) |
 
-> D3 dispersion correction can be enabled for any ORB, Fairchem/UMA, or SevenNet model with `d3_correction: true`, except `uma-s-1p2p1-ft-d4rev`. gpuma warns when it is enabled for UMA, ORB `*_omol` models or SevenNet `omol25_*` modals; SevenNet supports only BJ damping.
+### AIMNet2 (`model_type: "aimnet"`)
+
+All three models cover H, B, C, N, O, F, Si, P, S, Cl, As, Se, Br and I, handle
+charged molecules and include D3 dispersion. gpuma loads ensemble member 0 of
+each. Before loading the model, gpuma rejects structures with other elements, an
+open-shell structure (multiplicity above 1) on `aimnet2` or `aimnet2-2025`, and,
+for those two models, an H–H distance below 0.8 Å with at least one heavy atom
+present: upstream reports a spurious minimum where two hydrogens on one atom
+collapse ([aimnetcentral#139](https://github.com/isayevlab/aimnetcentral/issues/139)).
+
+| Model Name | Description |
+|---|---|
+| `aimnet2` | ωB97M-D3/def2-TZVPP, closed-shell; the general-purpose default |
+| `aimnet2-nse` | ωB97M-D3/def2-TZVPP (unrestricted), open-shell: uses the multiplicity |
+| `aimnet2-2025` | B97-3c, closed-shell; improved non-covalent interactions |
+
+> D3 dispersion correction can be enabled for any ORB, Fairchem/UMA, or SevenNet model with `d3_correction: true`, except `uma-s-1p2p1-ft-d4rev`; AIMNet2 models already include it. gpuma warns when it is enabled for UMA, ORB `*_omol` models or SevenNet `omol25_*` modals; SevenNet supports only BJ damping.
 
 These model names are also available programmatically as
-`gpuma.AVAILABLE_FAIRCHEM_MODELS`, `gpuma.AVAILABLE_ORB_MODELS`, and
-`gpuma.AVAILABLE_SEVENNET_MODELS`.
+`gpuma.AVAILABLE_FAIRCHEM_MODELS`, `gpuma.AVAILABLE_ORB_MODELS`,
+`gpuma.AVAILABLE_SEVENNET_MODELS`, and `gpuma.AVAILABLE_AIMNET_MODELS`.
 
 ---
 

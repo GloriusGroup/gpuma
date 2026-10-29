@@ -14,6 +14,7 @@ every run.
 | `orb` | `orb_v3_direct_omol` | Organic and molecular systems, the default choice | No token. `orb_v3_conservative_omol` gives energy-conserving forces at higher cost. |
 | `fairchem` | `uma-s-1p2p1-ft-d4rev` | When the user asks for UMA | Needs a Hugging Face token, see gpu-node.md. First load takes minutes. `uma-m-1p1` is larger and slower. The default `uma-s-1p2p1-ft-d4rev` is fine-tuned on ωB97M-D4rev; `uma-s-1p2p1`, `uma-s-1p2`, `uma-s-1p1` and `uma-m-1p1` are trained on ωB97M-V. |
 | `sevennet` | `7net-omni` | When the user asks for SevenNet | Multi-modal: also set `model.model_modal`, e.g. `omol25_high` for molecules. |
+| `aimnet` | `aimnet2` | When the user asks for AIMNet2 | No token. Only H, B, C, N, O, F, Si, P, S, Cl, As, Se, Br, I. `aimnet2` and `aimnet2-2025` (B97-3c) are closed-shell; use `aimnet2-nse` for radicals and triplets. |
 
 The `*_omat` and `*_mpa` ORB models are trained on inorganic crystals; don't use
 them for molecules.
@@ -42,7 +43,8 @@ them for molecules.
 and the ORB OMol models: their training data already includes dispersion, so D3
 would count it twice. gpuma rejects it for the default `uma-s-1p2p1-ft-d4rev`
 (ωB97M-D4rev) and logs a warning for the ωB97M-V models, including SevenNet's
-`omol25_*` modals. Consider it only for SevenNet models trained on PBE data.
+`omol25_*` modals. AIMNet2 models include D3 and reject it. Consider it only for
+SevenNet models trained on PBE data.
 
 ## Memory and batching
 

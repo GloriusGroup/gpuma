@@ -1,7 +1,7 @@
 """Command Line Interface for GPUMA.
 
 This module provides a command-line interface for molecular geometry
-optimization using Fairchem UMA, ORB-v3 or SevenNet models.  The CLI supports
+optimization using Fairchem UMA, ORB-v3, SevenNet or AIMNet2 models.  The CLI supports
 three main optimization modes:
 
 1. Single Structure Optimization: Optimize individual molecular structures.
@@ -11,9 +11,10 @@ three main optimization modes:
    files or directories.
 
 The model backend is selected via the ``model_type`` configuration key
-(``"fairchem"``/``"uma"``, ``"orb"``/``"orb-v3"``, or ``"sevennet"``/``"7net"``).
-The ``--model-type`` CLI flag can override it for any backend
-(``fairchem``/``uma``, ``orb``/``orb-v3``, ``sevennet``/``7net``).
+(``"fairchem"``/``"uma"``, ``"orb"``/``"orb-v3"``, ``"sevennet"``/``"7net"``, or
+``"aimnet"``/``"aimnet2"``).  The ``--model-type`` CLI flag can override it for any
+backend (``fairchem``/``uma``, ``orb``/``orb-v3``, ``sevennet``/``7net``,
+``aimnet``/``aimnet2``).
 """
 
 import argparse
@@ -57,7 +58,12 @@ from .config import (
 )
 from .config_schema import config_json_schema
 from .doctor import recommended_device, run_checks
-from .models.base import AVAILABLE_FAIRCHEM_MODELS, AVAILABLE_SEVENNET_MODELS
+from .models import check_structure_supported
+from .models.base import (
+    AVAILABLE_AIMNET_MODELS,
+    AVAILABLE_FAIRCHEM_MODELS,
+    AVAILABLE_SEVENNET_MODELS,
+)
 from .models.device import _parse_device_string
 from .structure import Structure, check_spin_state
 from .utils.io_handler import (
@@ -156,11 +162,11 @@ def _global_options_parser(defaults: bool = False) -> argparse.ArgumentParser:
         "--model-type",
         type=str,
         default=value_default,
-        choices=["fairchem", "uma", "orb", "orb-v3", "sevennet", "7net"],
+        choices=["fairchem", "uma", "orb", "orb-v3", "sevennet", "7net", "aimnet", "aimnet2"],
         help=(
             "Override model backend from config. "
             "'fairchem'/'uma' for Fairchem UMA models, 'orb'/'orb-v3' for ORB-v3 models, "
-            "'sevennet'/'7net' for SevenNet models."
+            "'sevennet'/'7net' for SevenNet models, 'aimnet'/'aimnet2' for AIMNet2 models."
         ),
     )
     parser.add_argument(
@@ -663,7 +669,7 @@ def _optimized_result(
 _DRY_RUN_COMMANDS = ("optimize", "smiles", "ensemble", "batch")
 
 
-def _check_smiles(smiles: str, multiplicity: int) -> None:
+def _check_smiles(smiles: str, multiplicity: int, config: Config) -> None:
     from rdkit import Chem
 
     mol = Chem.MolFromSmiles(smiles)
@@ -671,12 +677,14 @@ def _check_smiles(smiles: str, multiplicity: int) -> None:
         raise ValueError(f"Invalid SMILES: {smiles!r}")
     symbols = [atom.GetSymbol() for atom in Chem.AddHs(mol).GetAtoms()]
     check_spin_state(symbols, Chem.GetFormalCharge(mol), multiplicity)
+    check_structure_supported(config, symbols, multiplicity)
 
 
 _DEFAULT_MODEL_NAMES = {
     "fairchem": "uma-s-1p2p1-ft-d4rev",
     "orb": "orb_v3_direct_omol",
     "sevennet": "7net-omni",
+    "aimnet": "aimnet2",
 }
 
 
@@ -692,6 +700,8 @@ def _known_model_names(model_type: str) -> set[str]:
         # gpuma runs the omol task only; r2scan, OC25 and ODAC25 models lack it.
         omol = {name for name in pretrained_mlip.available_models if name.endswith("-omol")}
         return set(AVAILABLE_FAIRCHEM_MODELS) | omol
+    if model_type == "aimnet":
+        return set(AVAILABLE_AIMNET_MODELS)
     return set(AVAILABLE_SEVENNET_MODELS)
 
 
@@ -719,7 +729,7 @@ def _check_inputs(args, config: Config) -> int:
     charge = int(config.optimization.charge)
     multiplicity = int(config.optimization.multiplicity)
     if args.command in ("optimize", "smiles", "ensemble") and args.smiles:
-        _check_smiles(args.smiles, multiplicity)
+        _check_smiles(args.smiles, multiplicity, config)
         return _resolve_conformer_count(args, config) if args.command == "ensemble" else 1
     if args.command in ("optimize", "smiles"):
         structures = [read_xyz(args.xyz, charge=charge, multiplicity=multiplicity)]
@@ -732,6 +742,7 @@ def _check_inputs(args, config: Config) -> int:
     for i, s in enumerate(structures):
         try:
             check_spin_state(s.symbols, s.charge, s.multiplicity)
+            check_structure_supported(config, s.symbols, s.multiplicity, s.coordinates)
         except ValueError as exc:
             raise ValueError(f"structure {i + 1}: {exc}") from exc
     return len(structures)

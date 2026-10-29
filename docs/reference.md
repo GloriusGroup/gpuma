@@ -10,7 +10,7 @@ Documentation for the core functions in `gpuma`.
 
     - `gpuma.models` — model dispatchers (`load_calculator`, `load_torchsim_model`)
       and the `AVAILABLE_*_MODELS` registries, with backend-specific loaders under
-      `models/fairchem.py`, `models/orb.py`, `models/sevennet.py`.
+      `models/fairchem.py`, `models/orb.py`, `models/sevennet.py`, `models/aimnet.py`.
     - `gpuma.conformer_generation` — SMILES → 3D structure/ensemble embedding
       (`embed.py`, `mol_utils.py`).
     - `gpuma.utils` — I/O (`io_handler.py`), logging (`logging_utils.py`) and

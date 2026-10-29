@@ -32,7 +32,7 @@ plugins:
   - search
   - llmstxt:
       full_output: llms-full.txt
-      markdown_description: GPU geometry optimization of molecules with machine-learned interatomic potentials (UMA, ORB-v3, SevenNet), driven by the gpuma CLI.
+      markdown_description: GPU geometry optimization of molecules with machine-learned interatomic potentials (UMA, ORB-v3, SevenNet, AIMNet2), driven by the gpuma CLI.
       sections:
         Getting started:
           - index.md

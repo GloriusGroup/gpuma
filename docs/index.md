@@ -9,14 +9,16 @@
 GPUMA is a minimalist Python toolkit for facile and rapid high-throughput molecular geometry optimization
 based on machine-learning interatomic potentials (MLIPs).
 
-Three model backends are supported out of the box:
+Four model backends are supported out of the box:
 
 - **Fairchem UMA** ([UMA/OMol25](https://arxiv.org/abs/2505.08762)) — the default backend.
 - **ORB-v3** ([orbital-materials/orb-models](https://github.com/orbital-materials/orb-models)) — included in core dependencies.
 - **SevenNet** ([SevenNet](https://github.com/MDIL-SNU/SevenNet)) — included in core dependencies, with support for multi-modal checkpoints such as `7net-omni`.
+- **AIMNet2** ([isayevlab/aimnetcentral](https://github.com/isayevlab/aimnetcentral)) — included in core dependencies: `aimnet2`, the open-shell `aimnet2-nse` and `aimnet2-2025`.
 
-All three backends support optional DFT-D3(BJ) dispersion correction. It is off by
-default and rejected for the default `uma-s-1p2p1-ft-d4rev`, which already includes dispersion.
+Fairchem UMA, ORB-v3 and SevenNet support optional DFT-D3(BJ) dispersion correction. It is
+off by default and rejected for the default `uma-s-1p2p1-ft-d4rev` and the AIMNet2 models,
+which already include dispersion.
 
 GPUMA is especially designed for batch optimizations of many structures (conformer ensembles, datasets) on GPU,
 ensuring efficient parallelization and maximum GPU utilization by leveraging the [torch-sim library](https://arxiv.org/abs/2508.06628).
@@ -40,7 +42,7 @@ Feedback and improvements are always welcome!
 ### Option 1: Install from PyPI (recommended)
 
 This installs `gpuma` together with all dependencies (including the
-Fairchem UMA, ORB-v3, and SevenNet backends, plus the nvMolKit GPU
+Fairchem UMA, ORB-v3, SevenNet and AIMNet2 backends, plus the nvMolKit GPU
 conformer-embedding backend).
 Every dependency is pinned to the exact tested version, so install gpuma into
 a fresh environment.
@@ -102,6 +104,14 @@ checkpoints (e.g. `7net-omni`, `7net-mf-ompa`) additionally require a
 `"model_modal"` fidelity such as `"omol25_high"` (see [Configuration](config.md)
 and `examples/config_sevennet.json`).
 
+### AIMNet2 support
+
+AIMNet2 models are included in the standard installation. Set
+`"model_type": "aimnet"` (alias `"aimnet2"`) and a `"model_name"` of
+`"aimnet2"`, `"aimnet2-nse"` or `"aimnet2-2025"` (see [Configuration](config.md)
+and `examples/config_aimnet.json`). They cover 14 elements (H, B, C, N, O, F,
+Si, P, S, Cl, As, Se, Br, I); only `aimnet2-nse` handles open-shell structures.
+
 
 ### Option 2: Install from source
 
@@ -150,9 +160,12 @@ When a run is started from SMILES, an RDKit/MMFF force field (via nvMolKit on GP
 - ORB-v3: set `"model_type": "orb"` in the `model` section of your config.
 - SevenNet: set `"model_type": "sevennet"` in the `model` section of your
   config; multi-modal checkpoints also need a `"model_modal"` fidelity.
+- AIMNet2: set `"model_type": "aimnet"`. Structures with other elements, an
+  open-shell structure on a closed-shell model, or an H–H distance below 0.8 Å
+  (for `aimnet2` and `aimnet2-2025`) are rejected before the model loads.
 - D3 dispersion correction: off by default. Enable it with
   `"d3_correction": true` for models trained without dispersion. It is
-  rejected for `uma-s-1p2p1-ft-d4rev` and logs a warning for the other UMA
+  rejected for `uma-s-1p2p1-ft-d4rev` and the AIMNet2 models and logs a warning for the other UMA
   models, ORB `*_omol` models and SevenNet `omol25_*` modals (see
   [Configuration](config.md)).
 

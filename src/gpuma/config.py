@@ -87,6 +87,8 @@ _MODEL_TYPE_ALIASES: dict[str, str] = {
     "orb-v3": "orb",
     "sevennet": "sevennet",
     "7net": "sevennet",
+    "aimnet": "aimnet",
+    "aimnet2": "aimnet",
 }
 
 VALID_MODEL_TYPES: frozenset[str] = frozenset(_MODEL_TYPE_ALIASES)
@@ -103,6 +105,7 @@ VALID_LOGGING_LEVELS: tuple[str, ...] = ("CRITICAL", "ERROR", "WARNING", "INFO",
 VALID_MEMORY_SCALES_WITH: frozenset[str] = frozenset({"auto", "n_atoms", "n_edges"})
 
 # UMA models whose training labels include dispersion; D3 on top counts it twice.
+# Every AIMNet2 model includes D3 as well.
 DISPERSION_INCLUDED_MODELS: frozenset[str] = frozenset({"uma-s-1p2p1-ft-d4rev"})
 WB97MV_UMA_MODELS: frozenset[str] = frozenset(
     {"uma-s-1p1", "uma-s-1p2", "uma-s-1p2p1", "uma-m-1p1"}
@@ -123,12 +126,15 @@ def model_label(config: Config) -> str:
 
 
 def check_model_path(config: Config) -> None:
-    """Raise if ``model_path`` is set but missing, or set for ORB, which only loads names."""
+    """Raise if ``model_path`` is set but missing, or set for ORB or AIMNet2, which load names."""
     path = config.model.get("model_path")
     if not path:
         return
-    if resolve_model_type(config) == "orb":
-        raise ValueError("model_path is not supported for model_type 'orb'; use model_name")
+    model_type = resolve_model_type(config)
+    if model_type in ("orb", "aimnet"):
+        raise ValueError(
+            f"model_path is not supported for model_type {model_type!r}; use model_name"
+        )
     if not os.path.exists(str(path)):
         raise ValueError(f"model_path {str(path)!r} does not exist")
 
@@ -136,9 +142,10 @@ def check_model_path(config: Config) -> None:
 def check_model_cache_dir(config: Config) -> None:
     """Raise if ``model_cache_dir`` is set for a backend that downloads to its own cache."""
     model_type = resolve_model_type(config)
-    if config.model.get("model_cache_dir") and model_type != "fairchem":
+    if config.model.get("model_cache_dir") and model_type not in ("fairchem", "aimnet"):
         raise ValueError(
-            f"model_cache_dir is only supported for model_type 'fairchem', not {model_type!r}"
+            "model_cache_dir is only supported for model_type 'fairchem' and 'aimnet', "
+            f"not {model_type!r}"
         )
 
 
@@ -156,10 +163,8 @@ def _integer(value: Any, name: str) -> int:
 def check_d3_allowed(config: Config) -> None:
     """Raise if D3 would count dispersion twice or uses damping the backend lacks."""
     model_type, name = _named_model(config)
-    if (
-        config.model.get("d3_correction")
-        and model_type == "fairchem"
-        and name in DISPERSION_INCLUDED_MODELS
+    if config.model.get("d3_correction") and (
+        model_type == "aimnet" or (model_type == "fairchem" and name in DISPERSION_INCLUDED_MODELS)
     ):
         raise ValueError(f"{name} already includes dispersion; set model.d3_correction to false")
     damping = str(config.model.get("d3_damping") or "").strip().upper()
@@ -189,6 +194,7 @@ def resolve_model_type(config: Config | dict[str, Any]) -> str:
     - ``"fairchem"`` / ``"uma"`` -> ``"fairchem"``
     - ``"orb"`` / ``"orb-v3"`` -> ``"orb"``
     - ``"sevennet"`` / ``"7net"`` -> ``"sevennet"``
+    - ``"aimnet"`` / ``"aimnet2"`` -> ``"aimnet"``
 
     Works with either :class:`Config` or a plain dict.
     """

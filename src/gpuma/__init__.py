@@ -1,4 +1,4 @@
-"""GPUMA: Molecular geometry optimization using Fairchem UMA, ORB-v3 and SevenNet models.
+"""GPUMA: Molecular geometry optimization using Fairchem UMA, ORB-v3, SevenNet and AIMNet2 models.
 
 This package provides tools for:
 
@@ -7,12 +7,13 @@ This package provides tools for:
 - Format conversion between SMILES and XYZ coordinates
 - Configurable optimization via JSON/YAML configuration files
 
-Three model backends are supported:
+Four model backends are supported:
 
 - **Fairchem UMA** (default): Universal machine-learning interatomic potentials.
 - **ORB-v3**: Uses the ``orb-models`` package (included in core dependencies).
 - **SevenNet**: Uses the ``sevenn`` package (included in core dependencies),
   including multi-modal checkpoints such as ``7net-omni``.
+- **AIMNet2**: Uses the ``aimnet`` package (included in core dependencies).
 """
 
 from .api import (
@@ -41,6 +42,7 @@ from .utils.io_handler import (
     smiles_to_xyz,
 )
 from .models import (
+    AVAILABLE_AIMNET_MODELS,
     AVAILABLE_FAIRCHEM_MODELS,
     AVAILABLE_ORB_MODELS,
     AVAILABLE_SEVENNET_MODELS,
@@ -77,6 +79,7 @@ __all__ = [
     "AVAILABLE_FAIRCHEM_MODELS",
     "AVAILABLE_ORB_MODELS",
     "AVAILABLE_SEVENNET_MODELS",
+    "AVAILABLE_AIMNET_MODELS",
     # Configuration
     "Config",
     "default_config",

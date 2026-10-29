@@ -34,7 +34,7 @@ version is replaced by the default PyPI build:
 pip install gpuma
 ```
 
-This pulls in all model backends (Fairchem UMA, ORB-v3, and SevenNet) as
+This pulls in all model backends (Fairchem UMA, ORB-v3, SevenNet and AIMNet2) as
 core dependencies — there is no separate optional extra to install.
 
 ### Pinned dependencies

@@ -97,3 +97,18 @@ def test_other_backends_share_one_calculator(monkeypatch, methane):
     opt.optimize_structure_batch([methane], config)
     opt._load_calculator_cached.cache_clear()
     assert loads == [False]
+
+
+def test_model_limits_are_checked_before_loading():
+    """A short geminal H–H contact is rejected for aimnet2 before any model loads."""
+    from gpuma.structure import Structure
+
+    squeezed = Structure(
+        symbols=["C", "H", "H", "H", "H"],
+        coordinates=[(0, 0, 0), (0.35, 1.0, 0), (-0.35, 1.0, 0), (0, -0.63, 0.9), (0, -0.63, -0.9)],
+        charge=0, multiplicity=1,
+    )
+    config = Config({"model": {"model_type": "aimnet", "model_name": "aimnet2"},
+                     "technical": {"device": "cpu"}})
+    with pytest.raises(ValueError, match="H–H distance"):
+        optimize_single_structure(squeezed, config)

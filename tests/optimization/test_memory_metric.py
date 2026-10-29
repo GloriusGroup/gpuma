@@ -8,7 +8,13 @@ from gpuma.optimizer import _memory_scales_with
 
 @pytest.mark.parametrize(
     ("model_type", "expected"),
-    [("fairchem", "n_atoms"), ("uma", "n_atoms"), ("orb", "n_edges"), ("sevennet", "n_edges")],
+    [
+        ("fairchem", "n_atoms"),
+        ("uma", "n_atoms"),
+        ("orb", "n_edges"),
+        ("sevennet", "n_edges"),
+        ("aimnet", "n_atoms"),
+    ],
 )
 def test_auto_picks_metric_by_backend(model_type, expected):
     cfg = Config({"model": {"model_type": model_type}})

@@ -12,7 +12,7 @@ Guidance for AI coding agents working on the GPUMA repository. (Agents that
 | `src/gpuma/cli_report.py` | Exit codes and the `--json` summary |
 | `src/gpuma/config.py`, `config_schema.py` | Config defaults, validation, JSON Schema |
 | `src/gpuma/optimizer.py`, `autobatching.py` | ASE and torch-sim optimization, batching |
-| `src/gpuma/models/` | Model backends (Fairchem UMA, ORB-v3, SevenNet) and device handling |
+| `src/gpuma/models/` | Model backends (Fairchem UMA, ORB-v3, SevenNet, AIMNet2) and device handling |
 | `src/gpuma/conformer_generation/` | SMILES embedding (nvMolKit on GPU, morfeus on CPU), RMSD pruning |
 | `src/gpuma/utils/reporting.py` | Opt-in diagnostic events used by `--json` |
 | `src/gpuma/doctor.py`, `agent_skills.py` | `gpuma doctor` and `gpuma skills install` |

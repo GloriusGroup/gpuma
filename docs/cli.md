@@ -99,6 +99,22 @@ gpuma batch --xyz-dir examples/example_input_xyzs/multi_xyz_dir/ --output batch_
 You can also select SevenNet with the `--model-type` flag
 (`--model-type sevennet` or `--model-type 7net`), just like the other backends.
 
+### Using AIMNet2 models
+
+Set `"model_type": "aimnet"` (alias `"aimnet2"`) and `"model_name"` to
+`"aimnet2"`, `"aimnet2-nse"` (open-shell) or `"aimnet2-2025"` (see
+`examples/config_aimnet.json`), or pass `--model-type aimnet`. Inputs outside
+the model's range (elements, open-shell on a closed-shell model, H–H contacts
+below 0.8 Å) are rejected with exit code 3 before the model loads:
+
+```bash
+# Batch optimization from a multi-XYZ file with AIMNet2
+gpuma batch --multi-xyz examples/example_input_xyzs/multi_xyz_file.xyz --output batch_aimnet.xyz --config examples/config_aimnet.json
+
+# Open-shell structure with AIMNet2-NSE (set "model_name": "aimnet2-nse" in the config)
+gpuma optimize --xyz examples/example_input_xyzs/butene_triplet.xyz --multiplicity 3 --output triplet.xyz --config my_nse_config.json
+```
+
 **Note:**
 - If `--config` is not specified, `config.json` in the current directory is loaded by default.
   If that file does not exist either, GPUMA runs on its built-in defaults and logs a warning

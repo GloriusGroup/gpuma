@@ -65,6 +65,16 @@ AVAILABLE_SEVENNET_MODELS: tuple[str, ...] = (
     "7net-omni-i12",
 )
 
+#: AIMNet2 model names (``aimnet`` registry aliases, ensemble member 0).
+AVAILABLE_AIMNET_MODELS: tuple[str, ...] = (
+    "aimnet2",
+    "aimnet2-nse",
+    "aimnet2-2025",
+)
+
+#: Elements every AIMNet2 model in :data:`AVAILABLE_AIMNET_MODELS` was trained on.
+AIMNET_ELEMENTS: tuple[str, ...] = tuple("H B C N O F Si P S Cl As Se Br I".split())
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers

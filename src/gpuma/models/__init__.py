@@ -9,7 +9,7 @@ interatomic potentials:
   GPU-accelerated batch optimization.
 
 Both functions inspect ``config.model.model_type`` and dispatch to
-the appropriate backend (Fairchem UMA, ORB-v3, or SevenNet).
+the appropriate backend (Fairchem UMA, ORB-v3, SevenNet, or AIMNet2).
 
 Supported backends
 ------------------
@@ -20,10 +20,12 @@ Supported backends
 - **SevenNet** (``model_type="sevennet"`` or ``"7net"``): Uses the
   ``sevenn`` package's ``sevenn.torchsim``/``sevenn.calculator``
   integrations (:mod:`gpuma.models.sevennet`).
+- **AIMNet2** (``model_type="aimnet"`` or ``"aimnet2"``): Uses the ``aimnet``
+  package's ``AIMNet2ASE``/``AIMNet2TorchSim`` (:mod:`gpuma.models.aimnet`).
 
 DFT-D3(BJ) dispersion correction can be enabled for all backends via
-``config.model.d3_correction = True``, except for ``uma-s-1p2p1-ft-d4rev``,
-which already includes dispersion.  ORB models use
+``config.model.d3_correction = True``, except for ``uma-s-1p2p1-ft-d4rev``
+and the AIMNet2 models, which already include dispersion.  ORB models use
 orb-models' native ``D3SumModel``; Fairchem/UMA models are layered with
 torch-sim's ``D3DispersionModel`` (added in torch-sim 0.6.0) via
 ``SumModel`` for the batch path and via a thin ASE wrapper for the
@@ -43,6 +45,12 @@ checkpoints (``7net-mf-ompa``, ``7net-omni``) expose molecular fidelities
 SevenNet only supports ``float32``; because gpuma's batch pipeline runs in
 ``float64``, the torch-sim model is wrapped in ``sevenn``'s
 ``Float64Wrapper`` so state tensors are cast around the model.
+
+Notes on AIMNet2
+----------------
+AIMNet2 covers 14 elements, and only ``aimnet2-nse`` handles open-shell
+structures; :func:`check_structure_supported` rejects inputs outside a model's
+range before it is loaded.  It is ``float32``-only and reuses ``Float64Wrapper``.
 """
 
 from __future__ import annotations
@@ -70,7 +78,9 @@ if "nvalchemiops.interactions.dispersion.dftd3" not in _sys.modules:
 
 from ..config import Config, resolve_model_type
 from ..utils.decorators import time_it
+from .aimnet import _load_aimnet_calculator, _load_aimnet_torchsim, check_aimnet_structure
 from .base import (
+    AVAILABLE_AIMNET_MODELS,
     AVAILABLE_FAIRCHEM_MODELS,
     AVAILABLE_ORB_MODELS,
     AVAILABLE_SEVENNET_MODELS,
@@ -90,9 +100,11 @@ from .orb import _load_orb_calculator, _load_orb_torchsim
 from .sevennet import _load_sevennet_calculator, _load_sevennet_torchsim
 
 __all__ = [
+    "AVAILABLE_AIMNET_MODELS",
     "AVAILABLE_FAIRCHEM_MODELS",
     "AVAILABLE_ORB_MODELS",
     "AVAILABLE_SEVENNET_MODELS",
+    "check_structure_supported",
     "load_calculator",
     "load_torchsim_model",
 ]
@@ -102,7 +114,7 @@ __all__ = [
 def load_calculator(config: Config, single_structure: bool = False):
     """Load an ASE-compatible calculator for single-structure optimization.
 
-    Dispatches to the Fairchem, ORB-v3, or SevenNet backend based on
+    Dispatches to the Fairchem, ORB-v3, SevenNet, or AIMNet2 backend based on
     ``config.model.model_type``.
 
     Parameters
@@ -116,8 +128,8 @@ def load_calculator(config: Config, single_structure: bool = False):
     Returns
     -------
     calculator
-        An ASE calculator (``FAIRChemCalculator``, ``ORBCalculator``, or
-        ``SevenNetCalculator``).
+        An ASE calculator (``FAIRChemCalculator``, ``ORBCalculator``,
+        ``SevenNetCalculator``, or ``AIMNet2ASE``).
 
     Raises
     ------
@@ -131,6 +143,8 @@ def load_calculator(config: Config, single_structure: bool = False):
         return _load_orb_calculator(config)
     if model_type == "sevennet":
         return _load_sevennet_calculator(config)
+    if model_type == "aimnet":
+        return _load_aimnet_calculator(config)
     return _load_fairchem_calculator(config, single_structure)
 
 
@@ -138,7 +152,7 @@ def load_calculator(config: Config, single_structure: bool = False):
 def load_torchsim_model(config: Config):
     """Load a torch-sim model wrapper for GPU-accelerated batch optimization.
 
-    Dispatches to the Fairchem, ORB-v3, or SevenNet backend based on
+    Dispatches to the Fairchem, ORB-v3, SevenNet, or AIMNet2 backend based on
     ``config.model.model_type``.
 
     Parameters
@@ -150,7 +164,7 @@ def load_torchsim_model(config: Config):
     -------
     model
         A torch-sim model (``FairChemModel``, ``OrbTorchSimModel``, or a
-        ``Float64Wrapper``-wrapped SevenNet model).
+        ``Float64Wrapper``-wrapped SevenNet or AIMNet2 model).
 
     Raises
     ------
@@ -164,4 +178,17 @@ def load_torchsim_model(config: Config):
         return _load_orb_torchsim(config)
     if model_type == "sevennet":
         return _load_sevennet_torchsim(config)
+    if model_type == "aimnet":
+        return _load_aimnet_torchsim(config)
     return _load_fairchem_torchsim(config)
+
+
+def check_structure_supported(
+    config: Config, symbols: list[str], multiplicity: int, coordinates=None
+) -> None:
+    """Raise if the configured model can't describe a structure; only AIMNet2 has limits.
+
+    Checks needing geometry run only when ``coordinates`` are given.
+    """
+    if resolve_model_type(config) == "aimnet":
+        check_aimnet_structure(str(config.model.model_name), symbols, multiplicity, coordinates)

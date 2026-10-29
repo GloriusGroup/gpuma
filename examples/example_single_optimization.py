@@ -108,6 +108,29 @@ def example_optimize_from_smiles_orb():
     print(f"  Output saved to: {output_file}")
 
 
+def example_optimize_from_smiles_aimnet():
+    """Example 4: Optimize a cation from SMILES using AIMNet2."""
+    print("\n=== Example 4: Single optimization from SMILES (AIMNet2) ===")
+
+    smiles = "C1=C[O+]=CC=C1CCCCCC"
+    print(f"Optimizing {smiles} with AIMNet2 ...")
+
+    # model_type="aimnet", model_name="aimnet2"; the charge comes from the SMILES
+    cfg = load_config_from_file(os.path.join(HERE, "config_aimnet.json"))
+
+    output_file = os.path.join(OUTPUT_DIR, "python_single_smiles_aimnet.xyz")
+    structure = gpuma.optimize_single_smiles(
+        smiles=smiles,
+        output_file=output_file,
+        config=cfg,
+    )
+
+    print("  AIMNet2 optimization successful!")
+    print(f"  Atoms: {structure.n_atoms}, charge: {structure.charge}")
+    print(f"  Final energy: {structure.energy:.6f} eV")
+    print(f"  Output saved to: {output_file}")
+
+
 if __name__ == "__main__":
     print("GPUMA - Single Structure Optimization Examples")
     print("=" * 70)
@@ -115,6 +138,7 @@ if __name__ == "__main__":
     example_optimize_from_smiles()
     example_optimize_from_xyz()
     example_optimize_from_smiles_orb()
+    example_optimize_from_smiles_aimnet()
 
     print("\n" + "=" * 70)
     print("Examples completed! Check the generated XYZ files.")

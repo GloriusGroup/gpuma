@@ -593,7 +593,7 @@ def test_logging_level_is_normalized():
 
 @pytest.mark.parametrize(("model_type", "model_name"), [("orb", "orb_v3_direct_omol"),
                                                         ("sevennet", "7net-0")])
-def test_model_cache_dir_only_for_fairchem(tmp_path, model_type, model_name):
+def test_model_cache_dir_only_for_fairchem_and_aimnet(tmp_path, model_type, model_name):
     """ORB and SevenNet download to their own caches and would ignore the setting."""
     with pytest.raises(ValueError, match="model_cache_dir"):
         Config({"model": {"model_type": model_type, "model_name": model_name,
@@ -608,3 +608,8 @@ def test_uncreatable_model_cache_dir_is_error(tmp_path):
     cfg = Config({"model": {"model_cache_dir": str(blocker / "cache")}})
     with pytest.raises(ValueError, match="model_cache_dir"):
         _verify_model_name_and_cache_dir(cfg)
+
+
+def test_model_cache_dir_allowed_for_aimnet(tmp_path):
+    Config({"model": {"model_type": "aimnet", "model_name": "aimnet2",
+                      "model_cache_dir": str(tmp_path)}})
