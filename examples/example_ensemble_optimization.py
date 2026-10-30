@@ -199,6 +199,58 @@ def example_ensemble_from_smiles_orb_sequential():
     print(f"  Output saved to: {output_file}")
 
 
+# ---------------------------------------------------------------------------
+# AIMNet2 examples
+# ---------------------------------------------------------------------------
+
+
+def example_ensemble_from_smiles_aimnet():
+    """Example 9: Conformer ensemble optimization (AIMNet2, batch mode)."""
+    print("\n=== Example 9: Ensemble optimization from SMILES (AIMNet2, batch) ===")
+
+    smiles = "CCC(CC)CCOOC(CC)CCOC"
+    config = load_config_from_file(os.path.join(HERE, "config_aimnet.json"))
+    config.conformer_generation.max_num_conformers = 50
+    print(f"Generating conformers for {smiles} and optimizing with AIMNet2 (batch)...")
+
+    output_file = os.path.join(OUTPUT_DIR, "python_ensemble_aimnet_batch.xyz")
+    results = gpuma.optimize_ensemble_smiles(
+        smiles=smiles,
+        output_file=output_file,
+        config=config,
+    )
+
+    print("  AIMNet2 batch ensemble optimization successful!")
+    print(f"  Generated conformers: {len(results)}")
+    for i, s in enumerate(results):
+        print(f"  Conformer {i + 1}: {s.energy:.6f} eV")
+    print(f"  Output saved to: {output_file}")
+
+
+def example_batch_from_multi_xyz_aimnet_nse():
+    """Example 10: Batch optimize triplets with the open-shell AIMNet2-NSE model."""
+    print("\n=== Example 10: Batch optimization of triplets (AIMNet2-NSE) ===")
+
+    input_file = os.path.join(HERE, "example_input_xyzs/butene_triplet_multi.xyz")
+    output_file = os.path.join(OUTPUT_DIR, "python_batch_from_multi_xyz_aimnet_nse.xyz")
+
+    # aimnet2 is closed-shell only; aimnet2-nse uses the multiplicity
+    config = load_config_from_file(os.path.join(HERE, "config_aimnet.json"))
+    config.model.model_name = "aimnet2-nse"
+    config.optimization.multiplicity = 3
+    results = gpuma.optimize_batch_multi_xyz_file(
+        input_file=input_file,
+        output_file=output_file,
+        config=config,
+    )
+
+    print("  AIMNet2-NSE batch optimization from multi-XYZ successful!")
+    print(f"  Successfully optimized: {len(results)}")
+    for i, s in enumerate(results):
+        print(f"  Structure {i + 1}: {s.energy:.6f} eV")
+    print(f"  Output saved to: {output_file}")
+
+
 if __name__ == "__main__":
     print("GPUMA - Ensemble and Batch Optimization Examples")
     print("=" * 70)
@@ -210,6 +262,8 @@ if __name__ == "__main__":
     example_batch_from_multi_xyz_orb()
     example_batch_from_xyz_directory_orb()
     example_ensemble_from_smiles_orb_sequential()
+    example_ensemble_from_smiles_aimnet()
+    example_batch_from_multi_xyz_aimnet_nse()
 
     print("\n" + "=" * 70)
     print("Examples completed! Check the generated XYZ files.")

@@ -81,6 +81,7 @@ def setup_optimizer(modules, monkeypatch, converged=False):
         "gpuma.models",
         _parse_device_string=lambda device: device,
         _device_for_torch=lambda device: device,
+        check_structure_supported=lambda *args: None,
         load_calculator=lambda config: None,
         load_torchsim_model=lambda config: None,
     )

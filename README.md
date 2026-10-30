@@ -17,14 +17,16 @@
 GPUMA is a minimalist Python toolkit for facile and rapid high-throughput molecular geometry optimization
 using machine-learning interatomic potentials (MLIPs).
 
-Three model backends are supported out of the box:
+Four model backends are supported out of the box:
 
 - **Fairchem UMA** ([UMA/OMol25](https://arxiv.org/abs/2505.08762)) — the default backend.
 - **ORB-v3** ([orbital-materials/orb-models](https://github.com/orbital-materials/orb-models)).
 - **SevenNet** ([SevenNet](https://github.com/MDIL-SNU/SevenNet)), including multi-modal checkpoints such as `7net-omni`.
+- **AIMNet2** ([isayevlab/aimnetcentral](https://github.com/isayevlab/aimnetcentral)): `aimnet2`, the open-shell `aimnet2-nse` and `aimnet2-2025`.
 
-All three backends support optional DFT-D3(BJ) dispersion correction. It is off by
-default and rejected for the default `uma-s-1p2p1-ft-d4rev`, which already includes dispersion.
+Fairchem UMA, ORB-v3 and SevenNet support optional DFT-D3(BJ) dispersion correction. It is
+off by default and rejected for the default `uma-s-1p2p1-ft-d4rev` and the AIMNet2 models,
+which already include dispersion.
 
 GPUMA is especially designed for batch optimizations of many structures (conformer ensembles, datasets) on GPU,
 ensuring efficient parallelization and maximum GPU utilization by leveraging the [torch-sim library](https://arxiv.org/abs/2508.06628).
@@ -45,7 +47,7 @@ Feedback and improvements are always welcome!
 ### Option 1: Install from PyPI (recommended)
 
 This installs `gpuma` together with all dependencies (including the
-Fairchem UMA, ORB-v3, and SevenNet backends, as well as the nvMolKit GPU
+Fairchem UMA, ORB-v3, SevenNet and AIMNet2 backends, as well as the nvMolKit GPU
 conformer-embedding backend). Every dependency is pinned to the exact tested
 version, so install gpuma into a fresh environment.
 At the moment, installation and tests have only been
@@ -134,6 +136,7 @@ Also check the [examples/](examples) folder in the repository for sample config 
 - [examples/config.json](examples/config.json) – Fairchem UMA configuration
 - [examples/config_orb.json](examples/config_orb.json) – ORB-v3 configuration
 - [examples/config_sevennet.json](examples/config_sevennet.json) – SevenNet configuration (multi-modal `7net-omni`)
+- [examples/config_aimnet.json](examples/config_aimnet.json) – AIMNet2 configuration (`aimnet2`)
 - [examples/example_single_optimization.py](examples/example_single_optimization.py) – single-structure optimization from Python
 - [examples/example_ensemble_optimization.py](examples/example_ensemble_optimization.py) – ensemble/multi-structure optimization from Python
 - [examples/example_dispersion.py](examples/example_dispersion.py) – DFT-D3(BJ) correction with Fairchem and ORB (single + batch)
@@ -190,9 +193,16 @@ When a run is started from SMILES, an RDKit/MMFF force field (via nvMolKit on GP
 - SevenNet: models are downloaded automatically on first use; multi-modal
   checkpoints (e.g. `7net-omni`, `7net-mf-ompa`) also require a
   `model_modal` fidelity (see [docs/config.md](docs/config.md)).
+- AIMNet2: models are downloaded automatically on first use. They cover 14
+  elements, and only `aimnet2-nse` handles open-shell structures; other inputs
+  are rejected before the model loads (see [docs/config.md](docs/config.md)).
+  Use the `fire` batch optimizer: `lbfgs` can run out of GPU memory on large
+  AIMNet2 jobs.
+- BFGS: `"batch_optimizer": "bfgs"` keeps a dense Hessian per structure and can
+  run out of GPU memory on large batch jobs with any backend; prefer `lbfgs` or `fire`.
 - D3 dispersion correction: off by default. Set `"d3_correction": true` to
   enable DFT-D3(BJ) for models trained without dispersion. It is rejected for
-  `uma-s-1p2p1-ft-d4rev` and logs a warning for the other UMA models, ORB
+  `uma-s-1p2p1-ft-d4rev` and AIMNet2 and logs a warning for the other UMA models, ORB
   `*_omol` models and SevenNet `omol25_*` modals (see [docs/config.md](docs/config.md)).
 
 ## License

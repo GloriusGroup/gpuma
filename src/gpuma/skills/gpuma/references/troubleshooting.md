@@ -18,6 +18,9 @@ read the end of the log (stderr).
 | Exit 1 with an `IndexError` inside `warp`, or `gpuma doctor` reports `warp` FAIL | The installed warp-lang build needs a newer NVIDIA driver | Tell the user; the environment needs a warp-lang version built for the installed driver |
 | CUDA out of memory, "Failed to allocate" | GPU too full or shared | Lower `technical.max_memory_padding` to `0.8`; pick a freer GPU |
 | `model_modal` error with SevenNet | Multi-modal checkpoint | Set `model.model_modal` |
+| Exit 3, `Element(s) ... not supported by aimnet2` | AIMNet2 covers 14 main-group elements | Use ORB or UMA for that structure |
+| Exit 3, `aimnet2 is closed-shell only` | Radical or triplet on a closed-shell AIMNet2 model | Set `model.model_name` to `aimnet2-nse` |
+| Exit 3, `H–H distance ... below 0.8 Å` | Two hydrogens almost on top of each other; `aimnet2` collapses them | Fix the starting geometry, or use `aimnet2-nse` or another backend |
 | Energies of ions or radicals look wrong | Charge or multiplicity not set for XYZ input | Set `--charge` and `--multiplicity` |
 | Different conformers on a rerun | GPU conformer generation is not reproducible | Expected; not an error |
 | Exit 4 | Some structures failed or didn't converge | See "Finding failed structures" below |

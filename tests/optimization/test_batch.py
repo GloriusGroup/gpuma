@@ -591,6 +591,14 @@ class TestInputValidation:
         with pytest.raises(ValueError, match="Structure 0: .*multiplicity"):
             optimize_structure_batch([h3], config)
 
+    def test_model_limits_are_checked_before_loading(self):
+        """AIMNet2 lacks iron; the batch would otherwise fail inside the model."""
+        fe = Structure(symbols=["Fe"], coordinates=[(0.0, 0.0, 0.0)], charge=0, multiplicity=5)
+        config = Config({"model": {"model_type": "aimnet", "model_name": "aimnet2"},
+                         "technical": {"device": "cpu"}})
+        with pytest.raises(ValueError, match="Structure 0: Element\\(s\\) Fe"):
+            optimize_structure_batch([fe], config)
+
 
 @pytest.mark.skipif(
     not __import__("torch").cuda.is_available() or __import__("torch").cuda.device_count() < 2,

@@ -1,6 +1,6 @@
 ---
 name: gpuma
-description: Optimize molecular geometries and conformer ensembles on the GPU with gpuma, using machine-learned interatomic potentials (Fairchem UMA, ORB-v3, SevenNet). Use when the user wants to relax or optimize structures from SMILES or XYZ files, generate and optimize conformers, find the lowest-energy conformer, batch-optimize many molecules, choose a model or optimizer, write a gpuma config, or find out why a gpuma run failed.
+description: Optimize molecular geometries and conformer ensembles on the GPU with gpuma, using machine-learned interatomic potentials (Fairchem UMA, ORB-v3, SevenNet, AIMNet2). Use when the user wants to relax or optimize structures from SMILES or XYZ files, generate and optimize conformers, find the lowest-energy conformer, batch-optimize many molecules, choose a model or optimizer, write a gpuma config, or find out why a gpuma run failed.
 ---
 
 # Running gpuma
@@ -81,13 +81,18 @@ For any code other than 0, read
 
 - **Model.** Use ORB (`orb_v3_direct_omol`) for organic molecules unless the
   user asks otherwise: no token needed and it loads fast. UMA needs a Hugging
-  Face token and its first load takes minutes. For conformer searches on
-  organic molecules the model choice changes the results little.
+  Face token and its first load takes minutes. AIMNet2 (`model_type`
+  `aimnet`, `model_name` `aimnet2`) is several times faster than ORB on large
+  jobs and needs no token, but covers only H, B, C, N, O, F, Si, P, S, Cl, As,
+  Se, Br and I; use `aimnet2-nse` for radicals and triplets. For conformer
+  searches on organic molecules the model choice changes the results little.
 - **Optimizer.** Set `optimization.batch_optimizer` to `lbfgs`. It is faster
-  than the default `fire` and at least as accurate. Avoid `bfgs`, which is
-  slower than `fire`.
+  than the default `fire` and at least as accurate. With AIMNet2 use `fire`:
+  `lbfgs` can run out of GPU memory on large jobs. Avoid `bfgs`, which is
+  slower than `fire` and can run out of GPU memory on large jobs.
 - **Dispersion.** Leave `model.d3_correction` off for UMA and the ORB OMol
   models. Their training data (ωB97M-D4rev or ωB97M-V) already includes dispersion.
+  AIMNet2 models include D3 and reject it.
 - **Charge and spin.** A SMILES string carries its own charge. For XYZ input,
   set `optimization.charge` and `optimization.multiplicity` or pass `--charge`
   and `--multiplicity`. A batch applies one charge and multiplicity to every

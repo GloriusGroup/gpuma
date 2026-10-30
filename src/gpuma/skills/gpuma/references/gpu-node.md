@@ -24,7 +24,7 @@ choose.
 
 ## Hugging Face token (UMA models only)
 
-ORB and SevenNet need no token. For UMA:
+ORB, SevenNet and AIMNet2 need no token. For UMA:
 
 1. The user creates a read token at huggingface.co (Settings, Access Tokens)
    and accepts the license on the `facebook/UMA` model page.

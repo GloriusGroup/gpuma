@@ -1,14 +1,14 @@
 [project]
 name = "gpuma"
 version = "0.8.1"
-description = "GPUMA - Geometry optimization toolkit using Fairchem UMA, ORB-v3 and SevenNet models with Torch-Sim"
+description = "GPUMA - Geometry optimization toolkit using Fairchem UMA, ORB-v3, SevenNet and AIMNet2 models with Torch-Sim"
 readme = "README.md"
 requires-python = "==3.12.*"
 license = "MIT"
 authors = [
   { name = "Niklas Hölter", email = "niklas.hoelter@uni-muenster.de" },
 ]
-keywords = ["chemistry", "geometry-optimization", "uma", "fairchem", "ase", "mlip", "gpuma"]
+keywords = ["chemistry", "geometry-optimization", "uma", "fairchem", "aimnet", "ase", "mlip", "gpuma"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
@@ -32,7 +32,8 @@ dependencies = [
   "nvalchemi-toolkit-ops==0.5.0",
   "warp-lang==1.17.0",
   "sevenn[torchsim]==0.13.0",
-  "nvmolkit==0.5.1"
+  "nvmolkit==0.5.1",
+  "aimnet[ase,torchsim]==0.2.5"
 ]
 
 [project.optional-dependencies]

@@ -33,7 +33,12 @@ from .config import (
     model_label,
     resolve_model_type,
 )
-from .models import _parse_device_string, load_calculator, load_torchsim_model
+from .models import (
+    _parse_device_string,
+    check_structure_supported,
+    load_calculator,
+    load_torchsim_model,
+)
 from .structure import Structure, check_spin_state
 from .utils import reporting as _reporting
 from .utils.decorators import timed_block
@@ -239,6 +244,9 @@ def optimize_single_structure(
     if config is None:
         config = load_config_from_file()
     check_spin_state(structure.symbols, structure.charge, structure.multiplicity)
+    check_structure_supported(
+        config, structure.symbols, structure.multiplicity, structure.coordinates
+    )
 
     try:
         if calculator is None:
@@ -336,6 +344,9 @@ def optimize_structure_batch(
             raise ValueError(f"Structure {i}: empty structure")
         try:
             check_spin_state(struct.symbols, struct.charge, struct.multiplicity)
+            check_structure_supported(
+                config, struct.symbols, struct.multiplicity, struct.coordinates
+            )
         except ValueError as exc:
             raise ValueError(f"Structure {i}: {exc}") from exc
 
@@ -352,6 +363,7 @@ def optimize_structure_batch(
                 )
             results = _optimize_sequential(structures, config)
         elif mode == "batch":
+            _warn_batch_optimizer_memory(config)
             results = _optimize_batch_or_each(structures, config)
         else:
             raise ValueError(
@@ -467,7 +479,7 @@ def _whole_job_memory_scaler(state: Any, model: Any, batcher: Any) -> float | No
 
 
 def _memory_scales_with(config: Config) -> str:
-    """Return the autobatcher memory metric: ``n_atoms`` for UMA, else ``n_edges``, unless set."""
+    """Return the autobatcher memory metric: ``n_atoms`` for UMA and AIMNet2, else ``n_edges``."""
     choice = str(config.technical.get("memory_scales_with", "auto") or "auto").strip().lower()
     if choice not in VALID_MEMORY_SCALES_WITH:
         raise ValueError(
@@ -476,8 +488,25 @@ def _memory_scales_with(config: Config) -> str:
         )
     if choice != "auto":
         return choice
-    # UMA's large per-system memory makes edge counts overcharge small molecules.
-    return "n_atoms" if resolve_model_type(config) == "fairchem" else "n_edges"
+    # UMA's large per-system memory makes edge counts overcharge small molecules; AIMNet2's
+    # all-pairs Coulomb matrix grows with the square of the batch's atoms, whatever its edges.
+    return "n_atoms" if resolve_model_type(config) in ("fairchem", "aimnet") else "n_edges"
+
+
+def _warn_batch_optimizer_memory(config: Config) -> None:
+    """Warn about batch optimizers whose memory the autobatcher's estimate leaves out."""
+    name = str(config.optimization.batch_optimizer).strip().lower()
+    if name == "bfgs":
+        logger.warning(
+            "BFGS keeps a dense Hessian per structure that the batch memory estimate leaves out, "
+            "so large jobs can run out of GPU memory; use lbfgs or fire"
+        )
+    elif name == "lbfgs" and resolve_model_type(config) == "aimnet":
+        # aimnet <= 0.2.5 sizes its Coulomb neighbor matrix by the batch's total atoms.
+        logger.warning(
+            "L-BFGS with AIMNet2 can run out of GPU memory on large jobs, as AIMNet2 batches "
+            "fill the GPU and leave no room for its history; use fire"
+        )
 
 
 @_reporting._instrument("mlip_optimize", "torchsim")

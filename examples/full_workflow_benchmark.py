@@ -13,6 +13,7 @@ backends that make sense for isolated molecules:
   - orb_v3_direct_omol      (ORB-v3)
   - orb_v3_conservative_omol(ORB-v3)
   - 7net-0                  (SevenNet)   <- one SevenNet model
+  - aimnet2                 (AIMNet2)    <- one AIMNet2 model
 
 Force convergence is fixed at fconv = 5e-2 for every run (per request).
 
@@ -64,10 +65,15 @@ MODELS = [
     ModelChoice("orb-v3-direct",        "config_orb.json", "orb",      "orb_v3_direct_omol"),
     ModelChoice("orb-v3-conservative",  "config_orb.json", "orb",      "orb_v3_conservative_omol"),
     ModelChoice("7net-0",               "config.json",     "sevennet", "7net-0"),
+    ModelChoice("aimnet2",              "config_aimnet.json", "aimnet", "aimnet2"),
+    ModelChoice("aimnet2-nse",          "config_aimnet.json", "aimnet", "aimnet2-nse"),
+    ModelChoice("aimnet2-2025",         "config_aimnet.json", "aimnet", "aimnet2-2025"),
 ]
 
-# Default set: the default UMA model plus ORB and SevenNet; pass --models for the others.
-DEFAULT_MODEL_LABELS = ["uma-s-1p2p1-d4rev", "orb-v3-direct", "orb-v3-conservative", "7net-0"]
+# Default set: the default UMA model plus ORB, SevenNet and AIMNet2; pass --models for the others.
+DEFAULT_MODEL_LABELS = [
+    "uma-s-1p2p1-d4rev", "orb-v3-direct", "orb-v3-conservative", "7net-0", "aimnet2",
+]
 
 # (label, smiles file, conformers per molecule) -> aims for ~50 / ~1000 / ~4000 structures
 DATASETS = [

@@ -114,3 +114,22 @@ def _setup_sevennet_device(device: str) -> str:
         torch.cuda.set_device(idx)
         logger.info("Selected GPU %d for SevenNet backend.", idx)
     return normalized
+
+
+def _setup_aimnet_device(device: str) -> str:
+    """Prepare the CUDA device for the AIMNet2 backend.
+
+    ``AIMNet2Calculator`` honours ``"cuda:N"``; the current device is also set
+    so its Warp neighbor-list kernels run on the requested GPU.
+
+    Returns
+    -------
+    str
+        The normalized device string (``"cpu"`` or ``"cuda[:N]"``).
+    """
+    normalized = _parse_device_string(device)
+    if normalized.startswith("cuda") and ":" in normalized:
+        idx = int(normalized.split(":")[1])
+        torch.cuda.set_device(idx)
+        logger.info("Selected GPU %d for AIMNet2 backend.", idx)
+    return normalized

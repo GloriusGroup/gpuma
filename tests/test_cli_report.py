@@ -246,6 +246,38 @@ def test_dry_run_rechecks_d3_after_model_type_override(tmp_path, monkeypatch, ca
     assert "already includes dispersion" in json.loads(capsys.readouterr().out)["error"]["message"]
 
 
+def test_dry_run_unknown_aimnet_model_exit_3(tmp_path, monkeypatch, capsys):
+    _forbid_api(monkeypatch)
+    cfg = _write_config(tmp_path, model_type="aimnet", model_name="aimnet2-rxn")
+    argv = ["optimize", "--smiles", "CCO", "-o", "o.xyz", "-c", cfg, "--dry-run", "--json"]
+    assert main(argv) == 3
+    assert "'aimnet2'" in json.loads(capsys.readouterr().out)["error"]["message"]
+
+
+def test_dry_run_checks_smiles_against_aimnet_model(tmp_path, monkeypatch, capsys):
+    """aimnet2 is closed-shell; the radical needs aimnet2-nse."""
+    _forbid_api(monkeypatch)
+    argv = ["optimize", "--smiles", "[CH3]", "-o", "o.xyz", "--multiplicity", "2",
+            "--model-type", "aimnet", "--dry-run", "--json"]
+    cfg = _write_config(tmp_path, model_type="aimnet", model_name="aimnet2")
+    assert main([*argv, "-c", cfg]) == 3
+    assert "closed-shell" in json.loads(capsys.readouterr().out)["error"]["message"]
+    (tmp_path / "nse").mkdir()  # config files are cached by path
+    cfg = _write_config(tmp_path / "nse", model_type="aimnet", model_name="aimnet2-nse")
+    assert main([*argv, "-c", cfg]) == 0
+
+
+def test_dry_run_checks_structures_against_aimnet_model(tmp_path, monkeypatch, capsys):
+    _forbid_api(monkeypatch)
+    fe = tmp_path / "fe.xyz"
+    fe.write_text("1\nFe\nFe 0 0 0\n")
+    cfg = _write_config(tmp_path, model_type="aimnet", model_name="aimnet2")
+    argv = ["batch", "--multi-xyz", str(fe), "-o", str(tmp_path / "o.xyz"), "-c", cfg,
+            "--multiplicity", "5", "--dry-run", "--json"]
+    assert main(argv) == 3
+    assert "structure 1: Element(s) Fe" in json.loads(capsys.readouterr().out)["error"]["message"]
+
+
 @pytest.mark.parametrize("name", ["uma-s-1p2p1-ft-r2scan", "esen-sm-conserving-all-oc25"])
 def test_dry_run_rejects_fairchem_model_without_omol(tmp_path, monkeypatch, capsys, name):
     """gpuma runs the omol task only, so fairchem models without it are rejected."""
