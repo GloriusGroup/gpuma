@@ -200,7 +200,7 @@ technical:
 | Parameter | Default | Description |
 |---|---|---|
 | `batch_optimization_mode` | `"batch"` | `"sequential"` (ASE per structure) or `"batch"` (torch-sim GPU-accelerated). If a batch fails, its structures are retried one at a time, so one bad input fails only itself |
-| `batch_optimizer` | `"fire"` | Optimizer for both single and batch modes: `"fire"`, `"gradient_descent"`, `"lbfgs"`, or `"bfgs"`. In single-structure (ASE) mode, maps to ASE FIRE/BFGS/LBFGS (`"gradient_descent"` falls back to FIRE). Defaults to `"fire"` if unset; an unknown value is an error |
+| `batch_optimizer` | `"fire"` | Optimizer for both single and batch modes: `"fire"`, `"gradient_descent"`, `"lbfgs"`, or `"bfgs"`. In single-structure (ASE) mode, maps to ASE FIRE/BFGS/LBFGS (`"gradient_descent"` falls back to FIRE). Defaults to `"fire"` if unset; an unknown value is an error. In batch mode, `"bfgs"` keeps a dense Hessian per structure that the memory estimate leaves out and can run out of GPU memory on large jobs, and `"lbfgs"` can do the same with AIMNet2; gpuma warns for both |
 | `charge` | `0` | Total charge of the system (inferred from SMILES, not overridden). Must be an integer |
 | `multiplicity` | `1` | Spin multiplicity of the system. A multiplicity the electron count can't have (e.g. a singlet radical) is an error |
 | `force_convergence_criterion` | `5e-2` | Force convergence threshold (eV/A). Used for both single and batch modes |
